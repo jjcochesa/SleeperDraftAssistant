@@ -515,12 +515,15 @@ class DraftState:
         if ordered:
             self.position_order = ordered
 
-        uid_to_name = {
-            u["user_id"]: u.get("display_name", u["user_id"])
-            for u in get_league_users(self.league_id)
-        }
-        for r in get_league_rosters(self.league_id):
-            self.users[r["roster_id"]] = uid_to_name.get(r["owner_id"], f"Team {r['roster_id']}")
+        try:
+            uid_to_name = {
+                u["user_id"]: u.get("display_name", u["user_id"])
+                for u in get_league_users(self.league_id)
+            }
+            for r in get_league_rosters(self.league_id):
+                self.users[r["roster_id"]] = uid_to_name.get(r["owner_id"], f"Team {r['roster_id']}")
+        except Exception:
+            pass  # league not created yet; users/rosters will populate once it exists
 
     def inject_player_db(self, db: dict) -> None:
         """

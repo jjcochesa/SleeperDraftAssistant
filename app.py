@@ -238,8 +238,12 @@ def _build_board_df(players: list[dict], include_dp: bool = True) -> pd.DataFram
             # extras for detail toggle
             "_goals":    p["goals"],
             "_assists":  p["assists"],
+            "_sot":      p["shots_on_target"],
+            "_kp":       p["key_passes"],
             "_cs":       p["clean_sheets"],
             "_saves":    p["saves"],
+            "_tkl":      p["tackles_won"],
+            "_int":      p["interceptions"],
             "_yc":       p["yellow_cards"],
             "_rc":       p["red_cards"],
             "_xG90":     p.get("xG90"),
@@ -330,8 +334,11 @@ with tab_avail:
 
         if show_detail:
             detail_map = {
-                "Goals": "_goals", "Assists": "_assists", "CS": "_cs",
-                "Saves": "_saves", "YC": "_yc", "RC": "_rc",
+                "Goals": "_goals", "Assists": "_assists",
+                "SoT": "_sot", "KP": "_kp",
+                "CS": "_cs", "Saves": "_saves",
+                "Tkl": "_tkl", "Int": "_int",
+                "YC": "_yc", "RC": "_rc",
             }
             if ds.understat_loaded:
                 detail_map |= {"xG": "_xG", "xA": "_xA", "xG90": "_xG90", "xA90": "_xA90"}

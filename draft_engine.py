@@ -1,6 +1,6 @@
 """
-Draft engine: Sleeper EPL stats + Understat xG/xA for the snake draft assistant.
-All points/projections use Sleeper's own scoring, not FPL.
+Draft engine: Sleeper clubsoccer:epl stats + Understat xG/xA.
+All points use Sleeper's own scoring rules, NOT FPL.
 """
 
 import json
@@ -11,14 +11,73 @@ from typing import Optional
 
 import requests
 
-SLEEPER_API = "https://api.sleeper.app/v1"
+SLEEPER_API    = "https://api.sleeper.app/v1"
 UNDERSTAT_BASE = "https://understat.com"
+SLEEPER_SPORT  = "clubsoccer:epl"
 
-# Updated once load_static() calls get_league() — overridden if league has custom positions
 POSITION_ORDER = ["GK", "DEF", "MID", "FWD"]
 
-# Normalise whatever Sleeper / Understat return to our four canonical labels
-_POS_ALIASES = {
+# ---------------------------------------------------------------------------
+# Sleeper scoring rules
+# Dict value = position-specific multiplier; float = flat across all positions
+# ---------------------------------------------------------------------------
+SLEEPER_SCORING: dict[str, dict | float] = {
+    "goals":                {"FWD": 9,    "MID": 9,    "DEF": 10,   "GK": 10},
+    "assists":              {"FWD": 6,    "MID": 6,    "DEF": 7,    "GK": 7},
+    "shots_on_target":      2.0,
+    "key_passes":           {"FWD": 2,    "MID": 2,    "DEF": 2,    "GK": 0},
+    "successful_dribbles":  1.0,
+    "accurate_crosses":     1.0,
+    "yellow_card":         -2.0,
+    "red_card":            -7.0,
+    "second_yellow":       -5.0,
+    "aerials_won":          {"FWD": 0.5,  "MID": 0.5,  "DEF": 1.0,  "GK": 1.0},
+    "effective_clearances": {"FWD": 0,    "MID": 0,    "DEF": 0.25, "GK": 0.25},
+    "saves":                2.0,
+    "clean_sheet_60plus":   {"FWD": 0,    "MID": 1,    "DEF": 6,    "GK": 8},
+    "tackles_won":          1.0,
+    "interceptions":        1.0,
+    "blocked_shots":        1.0,
+    "goals_against":        {"FWD": 0,    "MID": 0,    "DEF": -2,   "GK": -2},
+    "own_goals":           -5.0,
+    "penalties_missed":    -4.0,
+    "penalties_saved":      8.0,
+    "smothers":             1.0,
+    "high_claims":          1.0,
+    "dispossessed":        -0.5,
+    "penalty_kicks_drawn":  2.0,
+}
+
+# Sleeper API short codes → canonical stat names (try in order)
+_SLEEPER_FIELD: dict[str, list[str]] = {
+    "goals":                ["gs"],
+    "assists":              ["ast", "asts"],
+    "shots_on_target":      ["sot"],
+    "key_passes":           ["kp"],
+    "successful_dribbles":  ["drb"],
+    "accurate_crosses":     ["acnc"],
+    "aerials_won":          ["aer"],
+    "effective_clearances": ["clr"],
+    "saves":                ["svs", "saves"],
+    "clean_sheet_60plus":   ["cos"],
+    "tackles_won":          ["tkl"],
+    "interceptions":        ["int"],
+    "blocked_shots":        ["blk"],
+    "goals_against":        ["ga"],
+    "own_goals":            ["og"],
+    "penalties_missed":     ["pm"],
+    "penalties_saved":      ["ps"],
+    "yellow_card":          ["yc"],
+    "red_card":             ["rc"],
+    "second_yellow":        ["2yc", "syc"],
+    "smothers":             ["smo"],
+    "high_claims":          ["hc"],
+    "dispossessed":         ["disp"],
+    "penalty_kicks_drawn":  ["pkd"],
+    "minutes":              ["min"],
+}
+
+_POS_ALIASES: dict[str, str] = {
     "gk": "GK", "gkp": "GK", "goalkeeper": "GK", "k": "GK",
     "def": "DEF", "defender": "DEF", "d": "DEF",
     "cb": "DEF", "lb": "DEF", "rb": "DEF", "wb": "DEF",
@@ -28,9 +87,7 @@ _POS_ALIASES = {
 }
 
 _http = requests.Session()
-_http.headers.update({
-    "User-Agent": "Mozilla/5.0 (compatible; SleeperDraftAssistant/1.0)",
-})
+_http.headers.update({"User-Agent": "Mozilla/5.0 (compatible; SleeperDraftAssistant/1.0)"})
 
 
 # ---------------------------------------------------------------------------
@@ -38,9 +95,13 @@ _http.headers.update({
 # ---------------------------------------------------------------------------
 
 def _norm_name(name: str) -> str:
-    nfkd = unicodedata.normalize("NFKD", name)
-    ascii_str = nfkd.encode("ascii", "ignore").decode()
-    return re.sub(r"[^a-z\s]", "", ascii_str.lower()).strip()
+    """
+    Accent-strip + lowercase for cross-source name matching.
+    Explicit replacement of Turkish dotless-ı (U+0131) which has no NFKD decomposition.
+    """
+    name = name.replace("ı", "i").replace("İ", "i")
+    nfkd = unicodedata.normalize("NFKD", name.lower().strip())
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
 def _norm_pos(raw: str) -> str:
@@ -99,8 +160,9 @@ def get_draft_picks(draft_id: str) -> list:
     return _get(f"{SLEEPER_API}/draft/{draft_id}/picks")
 
 
-def get_sleeper_players(sport: str = "epl") -> dict:
-    return _get(f"{SLEEPER_API}/players/{sport}")
+def get_sleeper_players() -> dict:
+    """Return {player_id: player_info} for all clubsoccer:epl players."""
+    return _get(f"{SLEEPER_API}/players/{SLEEPER_SPORT}")
 
 
 def get_sleeper_user(username_or_id: str) -> dict:
@@ -114,80 +176,61 @@ def find_roster_id(league_id: str, user_id: str) -> Optional[int]:
     return None
 
 
-def get_sleeper_season_stats(sport: str = "epl", season: str = "2025") -> dict:
+def get_sleeper_season_stats(season: str = "2025") -> dict:
     """
-    Fetch season-level player stats from Sleeper.
-    Returns {player_id: raw_stats_dict}.
-    Season "2025" = the 2025/26 EPL season.
+    Season-level player stats for clubsoccer:epl.
+    season="2025" covers the 2025/26 EPL campaign.
+    Returns {player_id: stats_dict} where stats_dict contains pts_std and raw stat codes.
     """
-    return _get(f"{SLEEPER_API}/stats/{sport}/regular/{season}")
-
-
-def get_sleeper_week_stats(sport: str, season: str, week: int) -> dict:
-    """Single-GW stats fallback."""
-    return _get(f"{SLEEPER_API}/stats/{sport}/regular/{season}/{week}")
+    return _get(f"{SLEEPER_API}/stats/{SLEEPER_SPORT}/regular/{season}")
 
 
 # ---------------------------------------------------------------------------
-# Sleeper points calculation
+# Points calculation
 # ---------------------------------------------------------------------------
 
-def _calc_pts(raw: dict, scoring: dict, position: str) -> float:
+def _raw_stat(raw: dict, stat_name: str) -> float:
+    """Extract a value from a Sleeper stats dict using known short-code aliases."""
+    for field in _SLEEPER_FIELD.get(stat_name, []):
+        v = raw.get(field)
+        if v is not None:
+            return float(v)
+    return 0.0
+
+
+def _calc_pts(raw: dict, position: str) -> float:
     """
-    Apply the league's scoring_settings to a player's raw season stats.
-    Tries the pre-computed pts_pts field first, then falls back to manual calc.
+    Calculate Sleeper fantasy points for a player.
+    Uses pts_std (Sleeper's pre-computed value) when available;
+    otherwise applies SLEEPER_SCORING to raw stat codes.
     """
-    # Sleeper sometimes stores the pre-computed total directly
-    pre = raw.get("pts_pts") or raw.get("fpts") or raw.get("pts")
+    pre = raw.get("pts_std")
     if pre is not None:
         return round(float(pre), 2)
 
-    pos = position.lower()
+    pos = position.upper()
     pts = 0.0
-
-    # Goals (position-specific scoring key)
-    goals = float(raw.get("goals_scored", raw.get("goals", 0)) or 0)
-    pts += goals * float(scoring.get(f"goal_scored_{pos}", scoring.get("goal_scored", 0)) or 0)
-
-    # Assists
-    assists = float(raw.get("ast", raw.get("assists", 0)) or 0)
-    pts += assists * float(scoring.get("ast", scoring.get("assist", 0)) or 0)
-
-    # Clean sheets (position-specific)
-    cs = float(raw.get("clean_sheets", raw.get("cs", 0)) or 0)
-    pts += cs * float(scoring.get(f"cs_{pos}", 0) or 0)
-
-    # Saves (GK only)
-    if pos == "gk":
-        saves = float(raw.get("saves", raw.get("save", 0)) or 0)
-        pts += saves * float(scoring.get("save", scoring.get("save_x", 0)) or 0)
-
-    # Conceding goals (negative, position-specific)
-    goals_conceded = float(raw.get("goals_conceded", raw.get("gls_conceded", 0)) or 0)
-    pts += goals_conceded * float(scoring.get(f"goals_conceded_{pos}", 0) or 0)
-
-    # Cards
-    yc = float(raw.get("yc", raw.get("yellow_cards", 0)) or 0)
-    rc = float(raw.get("rc", raw.get("red_cards", 0)) or 0)
-    pts += yc * float(scoring.get("yc", 0) or 0)
-    pts += rc * float(scoring.get("rc", 0) or 0)
-
-    # Bonus points
-    bonus = float(raw.get("bonus", 0) or 0)
-    pts += bonus * float(scoring.get("bonus", 1) or 1)
-
+    for stat_name, rule in SLEEPER_SCORING.items():
+        val = _raw_stat(raw, stat_name)
+        if val == 0:
+            continue
+        multiplier = rule.get(pos, 0) if isinstance(rule, dict) else float(rule)
+        pts += val * multiplier
     return round(pts, 2)
 
+
+# ---------------------------------------------------------------------------
+# Player data builder
+# ---------------------------------------------------------------------------
 
 def build_player_stats(
     players: dict,
     season_stats: dict,
-    scoring: dict,
     understat: Optional[dict] = None,
 ) -> dict[str, dict]:
     """
-    Merge Sleeper player info, season stats, and optional Understat xG/xA.
-    Returns {norm_name: enriched_dict} keyed by normalised player name.
+    Merge Sleeper player metadata, season stats, and Understat xG/xA.
+    Returns {norm_name: enriched_dict}.
     """
     result: dict[str, dict] = {}
 
@@ -204,52 +247,66 @@ def build_player_stats(
         )
         pos = _norm_pos(raw_pos) if raw_pos else "UNK"
 
-        # Sleeper points for 25/26
-        total_pts = _calc_pts(raw, scoring, pos)
-        games = int(raw.get("gms_active", raw.get("games_played", raw.get("gp", 0))) or 0)
-        ppg = round(total_pts / games, 2) if games > 0 else 0.0
-        mins = int(raw.get("mins_played", raw.get("minutes", 0)) or 0)
+        # Points and games
+        total_pts = _calc_pts(raw, pos)
+        mins      = _raw_stat(raw, "minutes")
+        # Approximate GWs with a full appearance (~90 min each), cap at 38
+        games     = min(38, round(mins / 90)) if mins > 0 else 0
+        ppg       = round(total_pts / games, 2) if games > 0 else 0.0
 
-        # Raw stats (for display)
-        goals   = int(raw.get("goals_scored", raw.get("goals", 0)) or 0)
-        assists = int(raw.get("ast", raw.get("assists", 0)) or 0)
-        cs      = int(raw.get("clean_sheets", raw.get("cs", 0)) or 0)
-        saves   = int(raw.get("saves", raw.get("save", 0)) or 0)
-        yc      = int(raw.get("yc", raw.get("yellow_cards", 0)) or 0)
-        rc      = int(raw.get("rc", raw.get("red_cards", 0)) or 0)
+        # Raw stats for display
+        goals    = _raw_stat(raw, "goals")
+        assists  = _raw_stat(raw, "assists")
+        sot      = _raw_stat(raw, "shots_on_target")
+        kp       = _raw_stat(raw, "key_passes")
+        cs       = _raw_stat(raw, "clean_sheet_60plus")
+        saves    = _raw_stat(raw, "saves")
+        tkl      = _raw_stat(raw, "tackles_won")
+        ints     = _raw_stat(raw, "interceptions")
+        yc       = _raw_stat(raw, "yellow_card")
+        rc       = _raw_stat(raw, "red_card")
 
-        # Understat xG/xA match by name
+        # Understat xG/xA — name match then last-name fallback
         xga: dict = {}
         if understat:
             xga = understat.get(key) or {}
             if not xga:
                 last = _norm_name(sp.get("last_name") or "")
-                xga = next((v for k, v in understat.items() if last and k.endswith(last)), {})
+                if last:
+                    xga = next(
+                        (v for k, v in understat.items() if k.endswith(last)),
+                        {},
+                    )
 
         result[key] = {
-            "sleeper_id":  pid,
-            "name":        full_name,
-            "web_name":    sp.get("last_name") or full_name,
-            "team":        sp.get("team", ""),
-            "position":    pos,
-            # Sleeper season stats (25/26)
-            "total_pts":   total_pts,
-            "ppg":         ppg,
-            "games":       games,
-            "minutes":     mins,
-            "goals":       goals,
-            "assists":     assists,
-            "clean_sheets":cs,
-            "saves":       saves,
-            "yellow_cards":yc,
-            "red_cards":   rc,
-            # Understat
-            "xG":          xga.get("xG"),
-            "xA":          xga.get("xA"),
-            "xG90":        xga.get("xG90"),
-            "xA90":        xga.get("xA90"),
-            "npxG":        xga.get("npxG"),
-            "has_stats":   bool(raw),
+            "sleeper_id":      pid,
+            "name":            full_name,
+            "web_name":        sp.get("last_name") or full_name,
+            "team":            sp.get("team", ""),
+            "position":        pos,
+            # Season totals (25/26, Sleeper scoring)
+            "total_pts":       total_pts,
+            "ppg":             ppg,
+            "games":           games,
+            "minutes":         int(mins),
+            # Stat breakdown
+            "goals":           int(goals),
+            "assists":         int(assists),
+            "shots_on_target": int(sot),
+            "key_passes":      int(kp),
+            "clean_sheets":    int(cs),
+            "saves":           int(saves),
+            "tackles_won":     int(tkl),
+            "interceptions":   int(ints),
+            "yellow_cards":    int(yc),
+            "red_cards":       int(rc),
+            # Understat (None if unmatched)
+            "xG":              xga.get("xG"),
+            "xA":              xga.get("xA"),
+            "xG90":            xga.get("xG90"),
+            "xA90":            xga.get("xA90"),
+            "npxG":            xga.get("npxG"),
+            "has_stats":       bool(raw),
         }
 
     return result
@@ -264,12 +321,12 @@ def fetch_understat_players(year: int = 2025) -> dict[str, dict]:
     Scrape Understat EPL xG/xA for the season starting in `year`.
     Returns {norm_name: {xG, xA, xG90, xA90, npxG, shots, key_passes, minutes}}.
     """
-    html = _get_html(f"{UNDERSTAT_BASE}/league/EPL/{year}")
+    html  = _get_html(f"{UNDERSTAT_BASE}/league/EPL/{year}")
     match = re.search(r"var\s+playersData\s*=\s*JSON\.parse\('(.+?)'\)", html)
     if not match:
         raise ValueError("playersData not found in Understat page — layout may have changed.")
 
-    raw = match.group(1)
+    raw     = match.group(1)
     decoded = raw.encode("raw_unicode_escape").decode("unicode_escape")
     players_raw: list = json.loads(decoded)
 
@@ -278,20 +335,21 @@ def fetch_understat_players(year: int = 2025) -> dict[str, dict]:
         name = p.get("player_name", "")
         if not name:
             continue
-        key = _norm_name(name)
-        time_min = float(p.get("time") or 0)
-        per90 = time_min / 90.0 if time_min >= 45 else 1.0
+        key     = _norm_name(name)
+        time_m  = float(p.get("time") or 0)
+        per90   = time_m / 90.0 if time_m >= 45 else 1.0
+
         result[key] = {
             "understat_name": name,
-            "club":      p.get("team_title", ""),
-            "xG":        round(float(p.get("xG") or 0), 3),
-            "xA":        round(float(p.get("xA") or 0), 3),
-            "xG90":      round(float(p.get("xG") or 0) / per90, 3),
-            "xA90":      round(float(p.get("xA") or 0) / per90, 3),
-            "npxG":      round(float(p.get("npxG") or 0), 3),
-            "shots":     int(p.get("shots") or 0),
-            "key_passes":int(p.get("key_passes") or 0),
-            "minutes":   int(time_min),
+            "club":           p.get("team_title", ""),
+            "xG":             round(float(p.get("xG")   or 0), 3),
+            "xA":             round(float(p.get("xA")   or 0), 3),
+            "xG90":           round(float(p.get("xG")   or 0) / per90, 3),
+            "xA90":           round(float(p.get("xA")   or 0) / per90, 3),
+            "npxG":           round(float(p.get("npxG") or 0), 3),
+            "shots":          int(p.get("shots")       or 0),
+            "key_passes":     int(p.get("key_passes")  or 0),
+            "minutes":        int(time_m),
         }
     return result
 
@@ -307,22 +365,20 @@ class DraftState:
     """
 
     def __init__(self, league_id: str, draft_id: str, my_roster_id: Optional[int] = None):
-        self.league_id = league_id
-        self.draft_id = draft_id
+        self.league_id    = league_id
+        self.draft_id     = draft_id
         self.my_roster_id = my_roster_id
 
-        self.draft_info: dict = {}
-        self.league_info: dict = {}
-        self.scoring: dict = {}              # league scoring_settings
-        self.picks: list[dict] = []
-        self.players: dict[str, dict] = {}   # sleeper_id → raw player
-        self.player_data: dict[str, dict] = {}  # norm_name → enriched
-        self.users: dict[int, str] = {}      # roster_id → display_name
+        self.draft_info:   dict = {}
+        self.league_info:  dict = {}
+        self.picks:        list[dict] = []
+        self.players:      dict[str, dict] = {}   # sleeper_id → raw player
+        self.player_data:  dict[str, dict] = {}   # norm_name  → enriched
+        self.users:        dict[int, str]  = {}   # roster_id  → display_name
         self.position_order: list[str] = list(POSITION_ORDER)
 
-        # Status flags
-        self.stats_loaded = False
-        self.stats_error: Optional[str] = None
+        self.stats_loaded     = False
+        self.stats_error:     Optional[str] = None
         self.understat_loaded = False
         self.understat_error: Optional[str] = None
 
@@ -333,11 +389,11 @@ class DraftState:
     # ------------------------------------------------------------------
 
     def load_static(self, season: str = "2025", understat_year: int = 2025) -> None:
-        self.draft_info = get_draft(self.draft_id)
+        self.draft_info  = get_draft(self.draft_id)
         self.league_info = get_league(self.league_id)
-        self.scoring = self.league_info.get("scoring_settings", {})
+        self.players     = get_sleeper_players()
 
-        # Derive position order from league roster positions
+        # Derive position order from the league's roster settings
         roster_positions = self.league_info.get("roster_positions", [])
         seen, ordered = set(), []
         for rp in roster_positions:
@@ -347,8 +403,6 @@ class DraftState:
                 ordered.append(rp_norm)
         if ordered:
             self.position_order = ordered
-
-        self.players = get_sleeper_players("epl")
 
         # Understat (non-fatal)
         understat: Optional[dict] = None
@@ -361,27 +415,24 @@ class DraftState:
         # Sleeper season stats (non-fatal)
         season_stats: dict = {}
         try:
-            season_stats = get_sleeper_season_stats("epl", season)
+            season_stats = get_sleeper_season_stats(season)
             self.stats_loaded = True
         except Exception as exc:
             self.stats_error = str(exc)
 
-        self.player_data = build_player_stats(
-            self.players, season_stats, self.scoring, understat
-        )
+        self.player_data = build_player_stats(self.players, season_stats, understat)
 
-        # User / roster mapping
-        users_raw   = get_league_users(self.league_id)
-        rosters_raw = get_league_rosters(self.league_id)
-        uid_to_name = {u["user_id"]: u.get("display_name", u["user_id"]) for u in users_raw}
-        for r in rosters_raw:
+        # User / roster map
+        uid_to_name = {u["user_id"]: u.get("display_name", u["user_id"])
+                       for u in get_league_users(self.league_id)}
+        for r in get_league_rosters(self.league_id):
             self.users[r["roster_id"]] = uid_to_name.get(r["owner_id"], f"Team {r['roster_id']}")
 
     def refresh(self) -> bool:
         new_picks = get_draft_picks(self.draft_id)
-        changed = len(new_picks) != self._last_pick_count
+        changed   = len(new_picks) != self._last_pick_count
         if changed:
-            self.picks = new_picks
+            self.picks            = new_picks
             self._last_pick_count = len(new_picks)
         return changed
 
@@ -418,18 +469,19 @@ class DraftState:
     # ------------------------------------------------------------------
 
     def _enrich(self, sleeper_id: str) -> dict:
-        sp = self.players.get(sleeper_id, {})
+        """Merge Sleeper player record with enriched player_data."""
+        sp        = self.players.get(sleeper_id, {})
         full_name = sp.get("full_name") or sp.get("name") or sleeper_id
-        key = _norm_name(full_name)
+        key       = _norm_name(full_name)
 
         data = self.player_data.get(key) or {}
         if not data:
-            # last-name fallback
             last = _norm_name(sp.get("last_name") or "")
-            data = next(
-                (v for k, v in self.player_data.items() if last and k.endswith(last)),
-                {},
-            )
+            if last:
+                data = next(
+                    (v for k, v in self.player_data.items() if k.endswith(last)),
+                    {},
+                )
 
         raw_pos = (
             data.get("position")
@@ -439,26 +491,30 @@ class DraftState:
         pos = _norm_pos(raw_pos) if raw_pos else "UNK"
 
         return {
-            "sleeper_id":   sleeper_id,
-            "name":         data.get("name") or full_name,
-            "web_name":     data.get("web_name") or sp.get("last_name") or full_name,
-            "team":         data.get("team") or sp.get("team", ""),
-            "position":     pos,
-            "total_pts":    data.get("total_pts", 0.0),
-            "ppg":          data.get("ppg", 0.0),
-            "games":        data.get("games", 0),
-            "minutes":      data.get("minutes", 0),
-            "goals":        data.get("goals", 0),
-            "assists":      data.get("assists", 0),
-            "clean_sheets": data.get("clean_sheets", 0),
-            "saves":        data.get("saves", 0),
-            "yellow_cards": data.get("yellow_cards", 0),
-            "red_cards":    data.get("red_cards", 0),
-            "xG":           data.get("xG"),
-            "xA":           data.get("xA"),
-            "xG90":         data.get("xG90"),
-            "xA90":         data.get("xA90"),
-            "has_stats":    data.get("has_stats", False),
+            "sleeper_id":      sleeper_id,
+            "name":            data.get("name") or full_name,
+            "web_name":        data.get("web_name") or sp.get("last_name") or full_name,
+            "team":            data.get("team") or sp.get("team", ""),
+            "position":        pos,
+            "total_pts":       data.get("total_pts", 0.0),
+            "ppg":             data.get("ppg", 0.0),
+            "games":           data.get("games", 0),
+            "minutes":         data.get("minutes", 0),
+            "goals":           data.get("goals", 0),
+            "assists":         data.get("assists", 0),
+            "shots_on_target": data.get("shots_on_target", 0),
+            "key_passes":      data.get("key_passes", 0),
+            "clean_sheets":    data.get("clean_sheets", 0),
+            "saves":           data.get("saves", 0),
+            "tackles_won":     data.get("tackles_won", 0),
+            "interceptions":   data.get("interceptions", 0),
+            "yellow_cards":    data.get("yellow_cards", 0),
+            "red_cards":       data.get("red_cards", 0),
+            "xG":              data.get("xG"),
+            "xA":              data.get("xA"),
+            "xG90":            data.get("xG90"),
+            "xA90":            data.get("xA90"),
+            "has_stats":       data.get("has_stats", False),
         }
 
     # ------------------------------------------------------------------
@@ -516,7 +572,8 @@ class DraftState:
         return upcoming
 
     def get_pick_grid(self) -> list[list[Optional[dict]]]:
-        n, r = self.num_teams, self.num_rounds
+        """2D grid [round_idx][slot_idx]. Each column = consistent draft slot."""
+        n, r  = self.num_teams, self.num_rounds
         grid: list[list[Optional[dict]]] = [[None] * n for _ in range(r)]
         for pick in self.picks:
             rnd  = (pick.get("round") or 1) - 1

@@ -499,7 +499,7 @@ with tab_ranks:
         show_detail = st.toggle("Detail cols", value=False, key="ranks_detail")
 
     sort_col_map = {
-        "26/27 Projected": "projected_pts",
+        "26/27 Projected": "26/27 Proj",
         "25/26 Total Pts": "25/26 Pts",
         "GW Avg (PPG)":    "PPG",
     }

@@ -561,8 +561,9 @@ with tab_ranks:
             st.warning("Sleeper season stats not loaded — points and projections show 0.")
 
     st.caption(
-        "**26/27 Proj** = (25/26 PPG × 34 GWs) × age curve  ·  "
-        "peak multiplier age 24–29  ·  new signings show 0 until seeded"
+        "**26/27 Proj** = Bayesian-blended PPG (individual + position prior) × 34 GWs  ·  "
+        "min 10 GWs required  ·  **ADP** = ranked by FPL 25/26 ownership % (FPL community proxy, "
+        "reflects FPL scoring — not Sleeper)"
     )
 
 

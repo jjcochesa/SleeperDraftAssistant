@@ -113,6 +113,14 @@ def _sleeper_season_year() -> int:
     return now.year if now.month >= 8 else now.year - 1
 
 
+def _resolve_team(fpl: Optional[dict], sp: dict) -> str:
+    """Return a human-readable team name, blanking out Sleeper's numeric IDs."""
+    if fpl and fpl.get("team_name"):
+        return fpl["team_name"]
+    raw = sp.get("team", "") or ""
+    # Sleeper uses numeric strings (e.g. "1038") for teams it can't map — hide those
+    return raw if raw and not raw.strip().isdigit() else "—"
+
 
 def _get(url: str, retries: int = 3, **kwargs) -> dict | list:
     for attempt in range(retries):
@@ -273,8 +281,9 @@ def build_player_stats(
     Joins Sleeper players ↔ stats on player_id (same key in both endpoints).
     Name normalisation is only used for FPL and Understat cross-source matching.
     """
-    MIN_GW       = 8      # below this, projected_pts = 0 (insufficient sample)
-    SHRINKAGE_K  = 10.0   # prior weight; pulls small samples toward position mean
+    MIN_GW       = 10     # below this, projected_pts = 0 (insufficient sample)
+    SHRINKAGE_K  = 20.0   # prior weight; 20-game prior collapses small samples hard
+    MIN_GW_PRIOR = 15     # only use established starters to compute position average
 
     # ------------------------------------------------------------------
     # Pass 1 — position-average PPG (qualified players only, ≥ MIN_GW)
@@ -292,7 +301,7 @@ def build_player_stats(
         pts  = _calc_pts(raw, pos)
         mins = _raw_stat(raw, "minutes")
         gws  = min(38, round(mins / 90)) if mins > 0 else 0
-        if gws >= MIN_GW and pts > 0:
+        if gws >= MIN_GW_PRIOR and pts > 0:
             pos_ppg_acc[pos].append(pts / gws)
 
     pos_avg: dict[str, float] = {
@@ -373,7 +382,7 @@ def build_player_stats(
             "sleeper_id":      pid,
             "name":            full_name,
             "web_name":        sp.get("last_name") or full_name,
-            "team":            (fpl.get("team_name") if fpl else None) or sp.get("team", ""),
+            "team":            _resolve_team(fpl, sp),
             "position":        pos,
             # 25/26 Sleeper season totals (pts_std verbatim via _calc_pts)
             "total_pts":       total_pts,

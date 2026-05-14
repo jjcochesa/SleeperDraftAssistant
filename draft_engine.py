@@ -113,16 +113,6 @@ def _sleeper_season_year() -> int:
     return now.year if now.month >= 8 else now.year - 1
 
 
-def _age_multiplier(age: int) -> float:
-    """Projection scaling by age. Peak 24-29, tails off for very young/old."""
-    if age <= 0:  return 1.00
-    if age <= 20: return 0.87
-    if age <= 23: return 0.95
-    if age <= 29: return 1.00
-    if age <= 32: return 0.95
-    if age <= 35: return 0.88
-    return 0.80
-
 
 def _get(url: str, retries: int = 3, **kwargs) -> dict | list:
     for attempt in range(retries):
@@ -219,9 +209,10 @@ def get_fpl_bootstrap() -> dict:
 
 def build_fpl_lookup(bootstrap: dict) -> dict[str, dict]:
     """
-    Return {norm_name: {"cost": float, "ownership_pct": float}}
+    Return {norm_name: {"cost": float, "ownership_pct": float, "team_name": str}}
     Keyed by normalised player name for cross-source matching.
     """
+    team_map = {t["id"]: t["name"] for t in bootstrap.get("teams", [])}
     lookup: dict[str, dict] = {}
     for p in bootstrap.get("elements", []):
         name = f"{p['first_name']} {p['second_name']}"
@@ -229,6 +220,7 @@ def build_fpl_lookup(bootstrap: dict) -> dict[str, dict]:
         lookup[key] = {
             "cost":          round((p.get("now_cost") or 0) / 10, 1),
             "ownership_pct": float(p.get("selected_by_percent") or 0),
+            "team_name":     team_map.get(p.get("team"), ""),
         }
     return lookup
 
@@ -308,19 +300,8 @@ def build_player_stats(
         games     = min(38, round(mins / 90)) if mins > 0 else 0
         ppg       = round(total_pts / games, 2) if games > 0 else 0.0
 
-        # Age — try direct field first, fall back to birth_date
-        age = 0
-        try:
-            if sp.get("age") is not None:
-                age = int(sp["age"])
-            elif sp.get("birth_date"):
-                bd  = datetime.strptime(str(sp["birth_date"])[:10], "%Y-%m-%d")
-                age = (datetime.now() - bd).days // 365
-        except Exception:
-            pass
-
-        # 26/27 projection: ppg × 34 GWs (~90% availability) × age curve
-        projected_pts = round(ppg * 34 * _age_multiplier(age), 1) if games > 0 else 0.0
+        # 26/27 projection: ppg × 34 GWs; require ≥5 games to avoid small-sample noise
+        projected_pts = round(ppg * 34, 1) if games >= 5 else 0.0
 
         # Raw stats
         goals  = _raw_stat(raw, "goals")
@@ -361,7 +342,7 @@ def build_player_stats(
             "sleeper_id":      pid,
             "name":            full_name,
             "web_name":        sp.get("last_name") or full_name,
-            "team":            sp.get("team", ""),
+            "team":            (fpl.get("team_name") if fpl else None) or sp.get("team", ""),
             "position":        pos,
             # 25/26 Sleeper season totals
             "total_pts":       total_pts,
@@ -389,8 +370,6 @@ def build_player_stats(
             "xG90":            xga.get("xG90"),
             "xA90":            xga.get("xA90"),
             "npxG":            xga.get("npxG"),
-            # Age + projection
-            "age":             age,
             "projected_pts":   projected_pts,
             "has_stats":       bool(raw),
         }
@@ -637,7 +616,6 @@ class DraftState:
             "xA":              data.get("xA"),
             "xG90":            data.get("xG90"),
             "xA90":            data.get("xA90"),
-            "age":             data.get("age", 0),
             "projected_pts":   data.get("projected_pts", 0.0),
             "has_stats":       data.get("has_stats", False),
         }

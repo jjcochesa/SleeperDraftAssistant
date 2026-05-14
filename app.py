@@ -308,7 +308,6 @@ def _build_rankings_df(
             "_xA90":     p.get("xA90"),
             "_xG":       p.get("xG"),
             "_xA":       p.get("xA"),
-            "_age":      p.get("age", 0),
         })
 
     df = pd.DataFrame(rows)
@@ -521,7 +520,6 @@ with tab_ranks:
 
         if show_detail:
             detail_map = {
-                "Age":     "_age",
                 "Goals":   "_goals",  "Assists": "_assists",
                 "SoT":     "_sot",    "KP":      "_kp",
                 "CS":      "_cs",     "Saves":   "_saves",

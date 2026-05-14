@@ -74,21 +74,21 @@ with st.sidebar:
 
     drafts: list = st.session_state.drafts
     if not drafts:
-        st.warning("No drafts found for this league.")
-        st.stop()
-
-    draft_labels: dict[str, str] = {
-        d["draft_id"]: (
-            f"{d.get('season', 'Draft')} — "
-            f"{d.get('status', '?').replace('_', ' ').title()}"
+        st.info("No drafts found yet — pre-draft research mode.")
+        selected_draft_id = "pre_draft"
+    else:
+        draft_labels: dict[str, str] = {
+            d["draft_id"]: (
+                f"{d.get('season', 'Draft')} — "
+                f"{d.get('status', '?').replace('_', ' ').title()}"
+            )
+            for d in drafts
+        }
+        selected_draft_id: str = st.selectbox(
+            "Draft",
+            options=list(draft_labels),
+            format_func=lambda x: draft_labels[x],
         )
-        for d in drafts
-    }
-    selected_draft_id: str = st.selectbox(
-        "Draft",
-        options=list(draft_labels),
-        format_func=lambda x: draft_labels[x],
-    )
 
     st.divider()
 

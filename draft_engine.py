@@ -36,8 +36,8 @@ SLEEPER_SCORING: dict[str, dict | float] = {
     "aerials_won":          {"FWD": 0.5,  "MID": 0.5,  "DEF": 1.0,  "GK": 1.0},
     "effective_clearances": {"FWD": 0,    "MID": 0,    "DEF": 0.25, "GK": 0.25},
     "saves":                2.0,
-    # Clean sheet only counts if the player appeared for 60+ minutes
-    "clean_sheet_60plus":   {"FWD": 0,    "MID": 1,    "DEF": 6,    "GK": 8},
+    # Sleeper's cos stat already gates on 60 min
+    "clean_sheets":         {"FWD": 0,    "MID": 1,    "DEF": 6,    "GK": 8},
     "tackles_won":          1.0,
     "interceptions":        1.0,
     "blocked_shots":        1.0,
@@ -53,31 +53,27 @@ SLEEPER_SCORING: dict[str, dict | float] = {
 
 # Sleeper API short codes → canonical stat name (try fields in order)
 _SLEEPER_FIELD: dict[str, list[str]] = {
-    "goals":                ["gs"],
-    "assists":              ["ast", "asts"],
+    "goals":                ["g"],
+    "assists":              ["at"],
     "shots_on_target":      ["sot"],
     "key_passes":           ["kp"],
     "successful_dribbles":  ["drb"],
     "accurate_crosses":     ["acnc"],
     "aerials_won":          ["aer"],
     "effective_clearances": ["clr"],
-    "saves":                ["svs", "saves"],
-    "clean_sheet_60plus":   ["cos"],
-    "tackles_won":          ["tkl"],
+    "saves":                ["svs"],
+    "clean_sheets":         ["cos"],
+    "tackles_won":          ["tkw"],
     "interceptions":        ["int"],
-    "blocked_shots":        ["blk"],
+    "blocked_shots":        ["bs"],
     "goals_against":        ["ga"],
     "own_goals":            ["og"],
     "penalties_missed":     ["pm"],
     "penalties_saved":      ["ps"],
     "yellow_card":          ["yc"],
     "red_card":             ["rc"],
-    "second_yellow":        ["2yc", "syc"],
-    "smothers":             ["smo"],
-    "high_claims":          ["hc"],
-    "dispossessed":         ["disp"],
-    "penalty_kicks_drawn":  ["pkd"],
     "minutes":              ["min"],
+    "dispossessed":         ["dis"],
 }
 
 _POS_ALIASES: dict[str, str] = {
@@ -306,7 +302,7 @@ def build_player_stats(
         assists= _raw_stat(raw, "assists")
         sot    = _raw_stat(raw, "shots_on_target")
         kp     = _raw_stat(raw, "key_passes")
-        cs     = _raw_stat(raw, "clean_sheet_60plus")
+        cs     = _raw_stat(raw, "clean_sheets")
         saves  = _raw_stat(raw, "saves")
         tkl    = _raw_stat(raw, "tackles_won")
         ints   = _raw_stat(raw, "interceptions")
@@ -470,9 +466,16 @@ class DraftState:
         """
         Light fetch: draft info, league info, user/roster mapping.
         Put this inside @st.cache_resource.
+        Safe to call with a sentinel draft_id ("pre_draft") when no draft exists yet.
         """
-        self.draft_info  = get_draft(self.draft_id)
-        self.league_info = get_league(self.league_id)
+        try:
+            self.draft_info = get_draft(self.draft_id) if self.draft_id != "pre_draft" else {}
+        except Exception:
+            self.draft_info = {}
+        try:
+            self.league_info = get_league(self.league_id)
+        except Exception:
+            self.league_info = {}
 
         roster_positions = self.league_info.get("roster_positions", [])
         seen, ordered = set(), []

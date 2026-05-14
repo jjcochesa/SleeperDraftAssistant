@@ -270,17 +270,43 @@ def build_player_stats(
 ) -> dict[str, dict]:
     """
     Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA.
-    Returns {norm_name: enriched_dict}.
-
-    Scoring insight baked into defensive stat extraction:
-    Sleeper rewards defensive volume (tkl=1, int=1, blk=1, sot=2).
-    Box-to-box MIDs (Rice, Garner) outperform; pure-attacking MIDs without
-    defensive actions underperform vs community expectations.
+    Joins Sleeper players ↔ stats on player_id (same key in both endpoints).
+    Name normalisation is only used for FPL and Understat cross-source matching.
     """
+    MIN_GW       = 8      # below this, projected_pts = 0 (insufficient sample)
+    SHRINKAGE_K  = 10.0   # prior weight; pulls small samples toward position mean
+
+    # ------------------------------------------------------------------
+    # Pass 1 — position-average PPG (qualified players only, ≥ MIN_GW)
+    # Used as the Bayesian prior so that 1-game wonders collapse toward average.
+    # ------------------------------------------------------------------
+    pos_ppg_acc: dict[str, list[float]] = {"GK": [], "DEF": [], "MID": [], "FWD": []}
+    for pid, sp in players.items():
+        raw = season_stats.get(pid, {})
+        if not raw:
+            continue
+        raw_pos = (sp.get("position") or (sp.get("fantasy_positions") or [""])[0] or "")
+        pos     = _norm_pos(raw_pos) if raw_pos else "UNK"
+        if pos not in pos_ppg_acc:
+            continue
+        pts  = _calc_pts(raw, pos)
+        mins = _raw_stat(raw, "minutes")
+        gws  = min(38, round(mins / 90)) if mins > 0 else 0
+        if gws >= MIN_GW and pts > 0:
+            pos_ppg_acc[pos].append(pts / gws)
+
+    pos_avg: dict[str, float] = {
+        pos: round(sum(v) / len(v), 3) if v else 8.0
+        for pos, v in pos_ppg_acc.items()
+    }
+
+    # ------------------------------------------------------------------
+    # Pass 2 — build full player records
+    # ------------------------------------------------------------------
     result: dict[str, dict] = {}
 
     for pid, sp in players.items():
-        raw = season_stats.get(pid, {})
+        raw = season_stats.get(pid, {})   # joined directly by player_id
 
         full_name = sp.get("full_name") or sp.get("name") or pid
         key       = _norm_name(full_name)
@@ -293,15 +319,20 @@ def build_player_stats(
         )
         pos = _norm_pos(raw_pos) if raw_pos else "UNK"
 
-        # Sleeper points and games
+        # pts_std used verbatim when present; fallback reconstructs from stats
         total_pts = _calc_pts(raw, pos)
         mins      = _raw_stat(raw, "minutes")
-        # Approximate GW appearances from minutes (cap at 38)
         games     = min(38, round(mins / 90)) if mins > 0 else 0
         ppg       = round(total_pts / games, 2) if games > 0 else 0.0
 
-        # 26/27 projection: ppg × 34 GWs; require ≥5 games to avoid small-sample noise
-        projected_pts = round(ppg * 34, 1) if games >= 5 else 0.0
+        # 26/27 projection with Bayesian shrinkage toward position average.
+        # Players with < MIN_GW are excluded (projected_pts = 0).
+        if games >= MIN_GW:
+            prior_ppg     = pos_avg.get(pos, 8.0)
+            blended_ppg   = (games * ppg + SHRINKAGE_K * prior_ppg) / (games + SHRINKAGE_K)
+            projected_pts = round(blended_ppg * 34, 1)
+        else:
+            projected_pts = 0.0
 
         # Raw stats
         goals  = _raw_stat(raw, "goals")
@@ -316,7 +347,7 @@ def build_player_stats(
         yc     = _raw_stat(raw, "yellow_card")
         rc     = _raw_stat(raw, "red_card")
 
-        # FPL: cost + ownership (for ADP proxy) — no positional data used
+        # FPL: cost + ownership + team name (name-normalised cross-source match)
         fpl = fpl_lookup.get(key) if fpl_lookup else None
         if fpl is None and fpl_lookup:
             last = _norm_name(sp.get("last_name") or "")
@@ -326,7 +357,7 @@ def build_player_stats(
                     None,
                 )
 
-        # Understat xG/xA
+        # Understat xG/xA (name-normalised cross-source match)
         xga: dict = {}
         if understat:
             xga = understat.get(key) or {}
@@ -344,7 +375,7 @@ def build_player_stats(
             "web_name":        sp.get("last_name") or full_name,
             "team":            (fpl.get("team_name") if fpl else None) or sp.get("team", ""),
             "position":        pos,
-            # 25/26 Sleeper season totals
+            # 25/26 Sleeper season totals (pts_std verbatim via _calc_pts)
             "total_pts":       total_pts,
             "ppg":             ppg,
             "games":           games,
@@ -361,7 +392,7 @@ def build_player_stats(
             "blocked_shots":   int(blk),
             "yellow_cards":    int(yc),
             "red_cards":       int(rc),
-            # FPL-sourced fields (cost + community consensus only)
+            # FPL-sourced (cost + community consensus only — never FPL points/position)
             "cost":            fpl["cost"]          if fpl else None,
             "ownership_pct":   fpl["ownership_pct"] if fpl else None,
             # Understat
@@ -375,8 +406,6 @@ def build_player_stats(
         }
 
     # ADP rank: community consensus via FPL ownership %.
-    # Higher ownership → lower (better) ADP rank.
-    # Excludes players with no FPL match.
     ranked = sorted(
         ((k, d) for k, d in result.items() if d["ownership_pct"] is not None),
         key=lambda x: x[1]["ownership_pct"],

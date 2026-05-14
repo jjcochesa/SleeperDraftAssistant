@@ -330,7 +330,6 @@ def build_player_stats(
     Name normalisation is only used for FPL and Understat cross-source matching.
     """
     MIN_GW       = 10     # below this, projected_pts = 0 (insufficient sample)
-    SHRINKAGE_K  = 20.0   # prior weight; 20-game prior collapses small samples hard
     MIN_GW_PRIOR = 15     # only use established starters to compute position average
 
     # ------------------------------------------------------------------
@@ -392,9 +391,13 @@ def build_player_stats(
         # Players with < MIN_GW are excluded (projected_pts = 0).
         # participation_rate penalises injury-prone players (Doku 19/34 → 0.56×).
         if games >= MIN_GW:
-            prior_ppg          = pos_avg.get(pos, 8.0)
-            blended_ppg        = (games * ppg + SHRINKAGE_K * prior_ppg) / (games + SHRINKAGE_K)
-            participation_rate = min(1.0, games / 34)
+            prior_ppg = pos_avg.get(pos, 8.0)
+            # Adaptive K: full-season veterans (34gw) get ~83% own-PPG weight;
+            # fringe starters (10gw) get ~44%. Prevents over-shrinking regulars.
+            k           = max(3.0, 40.0 / (games ** 0.5))
+            blended_ppg = (games * ppg + k * prior_ppg) / (games + k)
+            # Floor at 0.75 so one injury season doesn't bury an established starter
+            participation_rate = max(0.75, min(1.0, games / 34))
             projected_pts      = round(blended_ppg * 34 * participation_rate, 1)
         else:
             projected_pts = 0.0

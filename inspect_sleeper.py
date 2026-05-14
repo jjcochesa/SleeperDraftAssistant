@@ -5,6 +5,7 @@ Usage: python inspect_sleeper.py
 
 import json
 import requests
+from collections import defaultdict
 
 SLEEPER_API  = "https://api.sleeper.app/v1"
 SPORT        = "clubsoccer:epl"
@@ -80,8 +81,37 @@ except Exception as e:
     print(f"  ERROR: {e}")
 
 
-# ── 4. GW-level endpoint (fallback) ────────────────────────────────────────
-print(f"\n=== 4. GW-level endpoint  /stats/{SPORT}/regular/{SEASON}/1 ===")
+# ── 4. Team ID diagnostic — list all unique team values + example players ──
+print("\n=== 4. Team ID diagnostic ===")
+try:
+    team_examples: dict = defaultdict(list)
+    for pid, sp in players.items():
+        t = str(sp.get("team") or "").strip()
+        if t:
+            name = sp.get("full_name") or sp.get("last_name") or pid
+            team_examples[t].append(name)
+
+    print(f"  Unique team values: {len(team_examples)}")
+    print("\n  ID → example players (first 3):")
+    for tid in sorted(team_examples, key=lambda x: (not x.isdigit(), x)):
+        examples = team_examples[tid][:3]
+        print(f"    {tid:8s} → {', '.join(examples)}")
+except Exception as e:
+    print(f"  ERROR: {e}")
+
+
+# ── 5. Sleeper teams endpoint ──────────────────────────────────────────────
+print(f"\n=== 5. Sleeper teams endpoint /teams/{SPORT} ===")
+try:
+    teams = _get(f"{SLEEPER_API}/teams/{SPORT}")
+    print(f"  Response type: {type(teams).__name__}  len: {len(teams)}")
+    print(f"  Sample: {json.dumps(teams if isinstance(teams, dict) else teams[:3], indent=2)[:600]}")
+except Exception as e:
+    print(f"  ERROR (expected if endpoint doesn't exist): {e}")
+
+
+# ── 6. GW-level endpoint (fallback) ────────────────────────────────────────
+print(f"\n=== 6. GW-level endpoint  /stats/{SPORT}/regular/{SEASON}/1 ===")
 try:
     gw1 = _get(f"{SLEEPER_API}/stats/{SPORT}/regular/{SEASON}/1")
     rich_gw = {k: v for k, v in gw1.items() if v and len(v) > 2}
@@ -94,8 +124,8 @@ except Exception as e:
     print(f"  ERROR: {e}")
 
 
-# ── 5. League roster check ─────────────────────────────────────────────────
-print(f"\n=== 5. League rosters for {LEAGUE_ID} ===")
+# ── 7. League roster check ─────────────────────────────────────────────────
+print(f"\n=== 7. League rosters for {LEAGUE_ID} ===")
 try:
     rosters = _get(f"{SLEEPER_API}/league/{LEAGUE_ID}/rosters")
     for r in rosters:
@@ -105,8 +135,8 @@ except Exception as e:
     print(f"  ERROR: {e}")
 
 
-# ── 6. Draft check ─────────────────────────────────────────────────────────
-print(f"\n=== 6. Drafts for league ===")
+# ── 8. Draft check ─────────────────────────────────────────────────────────
+print(f"\n=== 8. Drafts for league ===")
 try:
     drafts = _get(f"{SLEEPER_API}/league/{LEAGUE_ID}/drafts")
     for d in drafts:

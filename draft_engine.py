@@ -88,6 +88,16 @@ _POS_ALIASES: dict[str, str] = {
 _http = requests.Session()
 _http.headers.update({"User-Agent": "Mozilla/5.0 (compatible; SleeperDraftAssistant/1.0)"})
 
+# Static EPL team abbreviation → display name (covers Sleeper 3-letter codes)
+_EPL_ABBREV: dict[str, str] = {
+    "ARS": "Arsenal",       "AVL": "Aston Villa",    "BOU": "Bournemouth",
+    "BRE": "Brentford",     "BHA": "Brighton",       "CHE": "Chelsea",
+    "CRY": "Crystal Palace","EVE": "Everton",         "FUL": "Fulham",
+    "IPS": "Ipswich",       "LEI": "Leicester",      "LEE": "Leeds",
+    "LIV": "Liverpool",     "MCI": "Man City",       "MUN": "Man Utd",
+    "NEW": "Newcastle",     "NFO": "Nott'm Forest",  "SOU": "Southampton",
+    "TOT": "Spurs",         "WHU": "West Ham",       "WOL": "Wolves",
+}
 
 # ---------------------------------------------------------------------------
 # Utilities
@@ -113,13 +123,21 @@ def _sleeper_season_year() -> int:
     return now.year if now.month >= 8 else now.year - 1
 
 
-def _resolve_team(fpl: Optional[dict], sp: dict) -> str:
-    """Return a human-readable team name, blanking out Sleeper's numeric IDs."""
+def _resolve_team(fpl: Optional[dict], sp: dict,
+                  teams_lookup: Optional[dict] = None) -> str:
+    """Return a human-readable team name.
+    Priority: FPL team name → Sleeper teams lookup → static abbreviation map → '—'
+    """
     if fpl and fpl.get("team_name"):
         return fpl["team_name"]
-    raw = sp.get("team", "") or ""
-    # Sleeper uses numeric strings (e.g. "1038") for teams it can't map — hide those
-    return raw if raw and not raw.strip().isdigit() else "—"
+    raw = (sp.get("team") or "").strip()
+    if not raw:
+        return "—"
+    if raw in _EPL_ABBREV:
+        return _EPL_ABBREV[raw]
+    if teams_lookup and raw in teams_lookup:
+        return teams_lookup[raw]
+    return "—" if raw.isdigit() else raw
 
 
 def _get(url: str, retries: int = 3, **kwargs) -> dict | list:
@@ -177,6 +195,24 @@ def get_draft_picks(draft_id: str) -> list:
 def get_sleeper_players() -> dict:
     """Return {player_id: player_info} for all clubsoccer:epl players."""
     return _get(f"{SLEEPER_API}/players/{SLEEPER_SPORT}")
+
+
+def get_sleeper_teams() -> dict[str, str]:
+    """
+    Fetch Sleeper EPL team metadata → {team_id: name}.
+    Returns empty dict if the endpoint doesn't exist (graceful fallback).
+    """
+    try:
+        data = _get(f"{SLEEPER_API}/teams/{SLEEPER_SPORT}")
+        if isinstance(data, list):
+            return {str(t.get("team_id", t.get("id", ""))): t.get("name", "")
+                    for t in data if t.get("name")}
+        if isinstance(data, dict):
+            return {str(k): v.get("name", str(v)) if isinstance(v, dict) else str(v)
+                    for k, v in data.items()}
+    except Exception:
+        pass
+    return {}
 
 
 def get_sleeper_user(username_or_id: str) -> dict:
@@ -275,6 +311,7 @@ def build_player_stats(
     season_stats: dict,
     fpl_lookup:   Optional[dict] = None,
     understat:    Optional[dict] = None,
+    teams_lookup: Optional[dict] = None,
 ) -> dict[str, dict]:
     """
     Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA.
@@ -317,8 +354,14 @@ def build_player_stats(
     for pid, sp in players.items():
         raw = season_stats.get(pid, {})   # joined directly by player_id
 
-        full_name = sp.get("full_name") or sp.get("name") or pid
-        key       = _norm_name(full_name)
+        # full_name: prefer explicit field; fall back to first+last concatenation
+        full_name = (
+            sp.get("full_name")
+            or sp.get("name")
+            or " ".join(filter(None, [sp.get("first_name"), sp.get("last_name")]))
+            or pid
+        )
+        key = _norm_name(full_name)
 
         # Position: always use Sleeper's classification, never FPL's
         raw_pos = (
@@ -334,12 +377,14 @@ def build_player_stats(
         games     = min(38, round(mins / 90)) if mins > 0 else 0
         ppg       = round(total_pts / games, 2) if games > 0 else 0.0
 
-        # 26/27 projection with Bayesian shrinkage toward position average.
+        # 26/27 projection with Bayesian shrinkage + availability penalty.
         # Players with < MIN_GW are excluded (projected_pts = 0).
+        # participation_rate penalises injury-prone players (Doku 19/34 → 0.56×).
         if games >= MIN_GW:
-            prior_ppg     = pos_avg.get(pos, 8.0)
-            blended_ppg   = (games * ppg + SHRINKAGE_K * prior_ppg) / (games + SHRINKAGE_K)
-            projected_pts = round(blended_ppg * 34, 1)
+            prior_ppg          = pos_avg.get(pos, 8.0)
+            blended_ppg        = (games * ppg + SHRINKAGE_K * prior_ppg) / (games + SHRINKAGE_K)
+            participation_rate = min(1.0, games / 34)
+            projected_pts      = round(blended_ppg * 34 * participation_rate, 1)
         else:
             projected_pts = 0.0
 
@@ -382,7 +427,7 @@ def build_player_stats(
             "sleeper_id":      pid,
             "name":            full_name,
             "web_name":        sp.get("last_name") or full_name,
-            "team":            _resolve_team(fpl, sp),
+            "team":            _resolve_team(fpl, sp, teams_lookup),
             "position":        pos,
             # 25/26 Sleeper season totals (pts_std verbatim via _calc_pts)
             "total_pts":       total_pts,
@@ -765,7 +810,10 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
     except Exception as exc:
         understat_error = str(exc)
 
-    player_data = build_player_stats(players, season_stats, fpl_lookup, understat)
+    # Sleeper teams endpoint — maps numeric team IDs to names (graceful fallback)
+    teams_lookup = get_sleeper_teams()
+
+    player_data = build_player_stats(players, season_stats, fpl_lookup, understat, teams_lookup)
 
     return {
         "players":          players,

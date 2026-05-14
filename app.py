@@ -288,7 +288,7 @@ def _build_rankings_df(
             "PPG":       p["ppg"],
             "GW":        p["games"],
             "26/27 Proj":p["projected_pts"],
-            "ADP":       p.get("adp_rank"),
+            "Draft Pos":  p.get("adp_rank"),
             "DP Rec":    dp_rec,
             # hidden detail cols
             "_goals":    p["goals"],
@@ -473,7 +473,7 @@ def _draft_fragment() -> None:
 # ---------------------------------------------------------------------------
 
 tab_ranks, tab_draft, tab_mine, tab_adp = st.tabs(
-    ["📊 Rankings", "🐍 Live Draft", "👤 My Team", "📈 ADP / Value"]
+    ["📊 Rankings", "🐍 Live Draft", "👤 My Team", "📈 Draft Pos / Value"]
 )
 
 
@@ -516,7 +516,7 @@ with tab_ranks:
     else:
         df = _build_rankings_df(available, sort_col=sort_col)
 
-        show_cols = ["Name", "Pos", "Club", "25/26 Pts", "PPG", "GW", "26/27 Proj", "ADP", "DP Rec"]
+        show_cols = ["Name", "Pos", "Club", "25/26 Pts", "PPG", "GW", "26/27 Proj", "Draft Pos", "DP Rec"]
 
         if show_detail:
             detail_map = {
@@ -607,7 +607,7 @@ with tab_mine:
                 "PPG":       p["ppg"],
                 "GW":        p["games"],
                 "26/27 Proj":p["projected_pts"],
-                "ADP":       p.get("adp_rank"),
+                "Draft Pos":  p.get("adp_rank"),
                 "DP Rec":    dp_rec,
             })
         df_mine = pd.DataFrame(rows_m).sort_values(
@@ -641,12 +641,12 @@ with tab_mine:
 
 # ── ADP / Value ────────────────────────────────────────────────────────────
 with tab_adp:
-    st.subheader("ADP / Value")
+    st.subheader("Draft Position / Value")
     st.caption(
-        "**ADP** = ranked by FPL community ownership % (best available consensus proxy). "
-        "**ADP−Proj** positive = player falling in community draft vs their projected output. "
-        "Defensive-volume MIDs (Rice, Garner, Stach) are systematically under-owned in FPL "
-        "but score heavily in Sleeper."
+        "**Draft Pos** = player's pick number in the 25/26 Sleeper draft (last season). "
+        "Real 26/27 ADP won't exist until community drafts start in August. "
+        "**ADP−Proj** positive = player drafted earlier than their 26/27 projection warrants. "
+        "Defensive-volume MIDs (Rice, Garner, Stach) are under-drafted vs Sleeper value."
     )
     st.divider()
 
@@ -665,8 +665,8 @@ with tab_adp:
             "PPG":        p["ppg"],
             "26/27 Proj": p["projected_pts"],
             "Proj Rank":  i,
-            "ADP":        adp,
-            "ADP−Proj":   diff,
+            "Draft Pos":   adp,
+            "ADP−Proj":    diff,
             "DP Rec":     dp_rec,
             "Cost £m":    p.get("cost"),
             "Own%":       p.get("ownership_pct"),
@@ -697,6 +697,6 @@ with tab_adp:
     st.dataframe(style_adp, use_container_width=True, height=650)
 
     st.caption(
-        "⚠️ FPL ownership reflects FPL scoring, not Sleeper scoring. "
-        "Use DP Rec rankings to override community ADP."
+        "⚠️ Draft Pos is last season's Sleeper pick number — not forward-looking 26/27 ADP. "
+        "Use 26/27 Proj rank + DP Rec to build your actual draft order."
     )

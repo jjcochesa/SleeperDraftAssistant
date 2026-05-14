@@ -396,8 +396,11 @@ def build_player_stats(
             # fringe starters (10gw) get ~44%. Prevents over-shrinking regulars.
             k           = max(3.0, 40.0 / (games ** 0.5))
             blended_ppg = (games * ppg + k * prior_ppg) / (games + k)
-            # Floor at 0.75 so one injury season doesn't bury an established starter
-            participation_rate = max(0.75, min(1.0, games / 34))
+            # Floor at 0.75 only for players who played ≥25gw — protects established
+            # starters with one injury season (Saka ACL) without lifting chronically
+            # unavailable players (Doku 19gw, Cherki 17gw) who have a real injury record.
+            raw_rate           = min(1.0, games / 34)
+            participation_rate = max(0.75, raw_rate) if games >= 25 else raw_rate
             projected_pts      = round(blended_ppg * 34 * participation_rate, 1)
         else:
             projected_pts = 0.0

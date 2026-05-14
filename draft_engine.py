@@ -113,6 +113,17 @@ def _sleeper_season_year() -> int:
     return now.year if now.month >= 8 else now.year - 1
 
 
+def _age_multiplier(age: int) -> float:
+    """Projection scaling by age. Peak 24-29, tails off for very young/old."""
+    if age <= 0:  return 1.00
+    if age <= 20: return 0.87
+    if age <= 23: return 0.95
+    if age <= 29: return 1.00
+    if age <= 32: return 0.95
+    if age <= 35: return 0.88
+    return 0.80
+
+
 def _get(url: str, retries: int = 3, **kwargs) -> dict | list:
     for attempt in range(retries):
         try:
@@ -297,6 +308,20 @@ def build_player_stats(
         games     = min(38, round(mins / 90)) if mins > 0 else 0
         ppg       = round(total_pts / games, 2) if games > 0 else 0.0
 
+        # Age — try direct field first, fall back to birth_date
+        age = 0
+        try:
+            if sp.get("age") is not None:
+                age = int(sp["age"])
+            elif sp.get("birth_date"):
+                bd  = datetime.strptime(str(sp["birth_date"])[:10], "%Y-%m-%d")
+                age = (datetime.now() - bd).days // 365
+        except Exception:
+            pass
+
+        # 26/27 projection: ppg × 34 GWs (~90% availability) × age curve
+        projected_pts = round(ppg * 34 * _age_multiplier(age), 1) if games > 0 else 0.0
+
         # Raw stats
         goals  = _raw_stat(raw, "goals")
         assists= _raw_stat(raw, "assists")
@@ -364,6 +389,9 @@ def build_player_stats(
             "xG90":            xga.get("xG90"),
             "xA90":            xga.get("xA90"),
             "npxG":            xga.get("npxG"),
+            # Age + projection
+            "age":             age,
+            "projected_pts":   projected_pts,
             "has_stats":       bool(raw),
         }
 
@@ -606,6 +634,8 @@ class DraftState:
             "xA":              data.get("xA"),
             "xG90":            data.get("xG90"),
             "xA90":            data.get("xA90"),
+            "age":             data.get("age", 0),
+            "projected_pts":   data.get("projected_pts", 0.0),
             "has_stats":       data.get("has_stats", False),
         }
 
@@ -613,7 +643,8 @@ class DraftState:
     # Board data
     # ------------------------------------------------------------------
 
-    def get_available(self, position: Optional[str] = None) -> list[dict]:
+    def get_available(self, position: Optional[str] = None,
+                      sort_by: str = "projected_pts") -> list[dict]:
         out = []
         for sid in self.players:
             if sid in self.drafted_ids:
@@ -622,7 +653,8 @@ class DraftState:
             if position and p["position"] != position:
                 continue
             out.append(p)
-        return sorted(out, key=lambda x: x["ppg"], reverse=True)
+        key = sort_by if sort_by in ("projected_pts", "ppg", "total_pts") else "projected_pts"
+        return sorted(out, key=lambda x: x[key], reverse=True)
 
     def get_my_picks(self) -> list[dict]:
         if self.my_roster_id is None:

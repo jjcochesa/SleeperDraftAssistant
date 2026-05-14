@@ -99,6 +99,14 @@ _EPL_ABBREV: dict[str, str] = {
     "TOT": "Spurs",         "WHU": "West Ham",       "WOL": "Wolves",
 }
 
+# Sleeper numeric team IDs — inferred from known players in those slots.
+# Run inspect_sleeper.py (section 4) to get the full list and confirm/extend this.
+_SLEEPER_NUMERIC_TEAMS: dict[str, str] = {
+    "1037": "Newcastle",    # Bruno Guimarães
+    "1038": "Brentford",    # Igor Thiago
+    "1039": "Chelsea",      # João Pedro (transferred from Brighton)
+}
+
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
@@ -126,7 +134,8 @@ def _sleeper_season_year() -> int:
 def _resolve_team(fpl: Optional[dict], sp: dict,
                   teams_lookup: Optional[dict] = None) -> str:
     """Return a human-readable team name.
-    Priority: FPL team name → Sleeper teams lookup → static abbreviation map → '—'
+    Priority: FPL team name → static abbreviation map → hardcoded numeric IDs
+              → Sleeper teams API lookup → '—'
     """
     if fpl and fpl.get("team_name"):
         return fpl["team_name"]
@@ -135,6 +144,8 @@ def _resolve_team(fpl: Optional[dict], sp: dict,
         return "—"
     if raw in _EPL_ABBREV:
         return _EPL_ABBREV[raw]
+    if raw in _SLEEPER_NUMERIC_TEAMS:
+        return _SLEEPER_NUMERIC_TEAMS[raw]
     if teams_lookup and raw in teams_lookup:
         return teams_lookup[raw]
     return "—" if raw.isdigit() else raw

@@ -1,6 +1,7 @@
 """
 Sleeper Draft Assistant — Streamlit UI.
 Snake draft helper for a 10-team, 17-round EPL Sleeper league.
+All stats and points use Sleeper's own scoring system.
 """
 
 import time
@@ -10,7 +11,6 @@ import streamlit as st
 
 from draft_engine import (
     DraftState,
-    POSITION_ORDER,
     _norm_name,
     get_league_drafts,
     get_sleeper_user,
@@ -23,6 +23,8 @@ from draft_engine import (
 
 LEAGUE_ID = "1115505765961293824"
 POLL_INTERVAL_S = 10
+SLEEPER_SEASON = "2025"        # 2025/26 EPL season
+UNDERSTAT_YEAR = 2025
 
 st.set_page_config(
     page_title="Sleeper Draft Assistant",
@@ -37,7 +39,7 @@ st.set_page_config(
 
 with st.sidebar:
     st.title("⚽ Draft Assistant")
-    st.caption("EPL · Snake · 10 teams · 17 rounds")
+    st.caption("EPL · Sleeper · Snake · 10 teams · 17 rounds")
     st.divider()
 
     # ── Draft ──────────────────────────────────────────────────────────
@@ -129,7 +131,7 @@ with st.sidebar:
 
 
 # ---------------------------------------------------------------------------
-# Parse DP rankings
+# Parse DP rankings  {norm_name → rank}
 # ---------------------------------------------------------------------------
 
 dp_lookup: dict[str, int] = {}
@@ -141,18 +143,21 @@ if dp_text.strip():
 
 
 # ---------------------------------------------------------------------------
-# DraftState (cached per draft_id)
+# DraftState
 # ---------------------------------------------------------------------------
 
-@st.cache_resource(show_spinner="Loading players & projections…")
+@st.cache_resource(show_spinner="Loading Sleeper data…")
 def _load_draft_state(draft_id: str, league_id: str) -> DraftState:
     ds = DraftState(league_id, draft_id)
-    ds.load_static(understat_year=2025)
+    ds.load_static(season=SLEEPER_SEASON, understat_year=UNDERSTAT_YEAR)
     return ds
 
 
 ds: DraftState = _load_draft_state(selected_draft_id, LEAGUE_ID)
 ds.my_roster_id = my_roster_id
+
+# Convenience alias so tabs can reference ds.position_order
+POS_ORDER = ds.position_order
 
 # Polling
 now = time.time()
@@ -171,12 +176,15 @@ if auto_refresh:
             unsafe_allow_html=True,
         )
 
-# Sidebar data-source status
+# Sidebar status
 with ds_status_slot.container():
-    fpl_icon  = "✅" if ds.fpl_loaded else "❌"
-    us_icon   = "✅" if ds.understat_loaded else ("⚠️" if ds.understat_error else "—")
-    dp_icon   = f"✅ {len(dp_lookup)} players" if dp_lookup else "—"
-    st.caption(f"FPL {fpl_icon}  ·  Understat {us_icon}  ·  DP {dp_icon}")
+    stats_icon = "✅" if ds.stats_loaded else ("⚠️" if ds.stats_error else "—")
+    us_icon    = "✅" if ds.understat_loaded else ("⚠️" if ds.understat_error else "—")
+    dp_icon    = f"✅ {len(dp_lookup)}" if dp_lookup else "—"
+    st.caption(f"Stats {stats_icon}  ·  xG/xA {us_icon}  ·  DP {dp_icon}")
+    if ds.stats_error:
+        with st.expander("Stats error"):
+            st.code(ds.stats_error, language=None)
     if ds.understat_error:
         with st.expander("Understat error"):
             st.code(ds.understat_error, language=None)
@@ -207,34 +215,37 @@ st.divider()
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Shared helpers
 # ---------------------------------------------------------------------------
 
 def _build_board_df(players: list[dict], include_dp: bool = True) -> pd.DataFrame:
     """
-    Build the core display DataFrame: Total Pts, PPG, ADP, DP Rec.
-    Sorted by DP Rec if loaded, otherwise by PPG descending.
+    Core display frame: Total Pts, PPG, DP Rec.
+    Sorted by DP Rec (when loaded) then PPG.
     """
     rows = []
     for p in players:
         norm = _norm_name(p["name"])
         dp_rec = dp_lookup.get(norm)
         rows.append({
-            "Name":       p["name"],
-            "Pos":        p["position"],
-            "Club":       p["team"],
-            "Total Pts":  p["total_points"],
-            "PPG":        p["ppg"],
-            "ADP":        p["adp_rank"],
-            "DP Rec":     dp_rec,
-            # extras kept for detail view
-            "_xG90":      p.get("xG90"),
-            "_xA90":      p.get("xA90"),
-            "_mins":      p["minutes"],
-            "_goals":     p["goals"],
-            "_assists":   p["assists"],
-            "_sel_pct":   p["selected_pct"],
-            "_cost":      p["cost"],
+            "Name":      p["name"],
+            "Pos":       p["position"],
+            "Club":      p["team"],
+            "Total Pts": p["total_pts"],
+            "PPG":       p["ppg"],
+            "GW":        p["games"],
+            "DP Rec":    dp_rec,
+            # extras for detail toggle
+            "_goals":    p["goals"],
+            "_assists":  p["assists"],
+            "_cs":       p["clean_sheets"],
+            "_saves":    p["saves"],
+            "_yc":       p["yellow_cards"],
+            "_rc":       p["red_cards"],
+            "_xG90":     p.get("xG90"),
+            "_xA90":     p.get("xA90"),
+            "_xG":       p.get("xG"),
+            "_xA":       p.get("xA"),
         })
 
     df = pd.DataFrame(rows)
@@ -242,7 +253,6 @@ def _build_board_df(players: list[dict], include_dp: bool = True) -> pd.DataFram
         return df
 
     if dp_lookup and include_dp:
-        # DP Rec rows first (sorted by rank), then unranked by PPG
         ranked   = df[df["DP Rec"].notna()].sort_values("DP Rec")
         unranked = df[df["DP Rec"].isna()].sort_values("PPG", ascending=False)
         df = pd.concat([ranked, unranked], ignore_index=True)
@@ -302,7 +312,7 @@ with tab_avail:
 
     col_pos, col_n, col_detail = st.columns([3, 1, 1])
     with col_pos:
-        pos_filter = st.radio("Position", ["All"] + POSITION_ORDER, horizontal=True)
+        pos_filter = st.radio("Position", ["All"] + POS_ORDER, horizontal=True)
     with col_n:
         top_n = st.selectbox("Show", [25, 50, 100], index=0)
     with col_detail:
@@ -316,55 +326,53 @@ with tab_avail:
     else:
         df = _build_board_df(available)
 
-        # Core columns always shown
-        show_cols   = ["Name", "Pos", "Club", "Total Pts", "PPG", "ADP", "DP Rec"]
-        show_labels = show_cols[:]
+        show_cols = ["Name", "Pos", "Club", "Total Pts", "PPG", "GW", "DP Rec"]
 
-        # Detail columns (toggle)
         if show_detail:
-            extras = {
-                "xG90": "_xG90", "xA90": "_xA90",
-                "Mins": "_mins", "Goals": "_goals",
-                "Assists": "_assists", "Sel%": "_sel_pct", "Cost": "_cost",
+            detail_map = {
+                "Goals": "_goals", "Assists": "_assists", "CS": "_cs",
+                "Saves": "_saves", "YC": "_yc", "RC": "_rc",
             }
-            for label, col in extras.items():
-                if col in df.columns:
-                    df[label] = df[col]
-                    show_cols.append(label)
-                    show_labels.append(label)
+            if ds.understat_loaded:
+                detail_map |= {"xG": "_xG", "xA": "_xA", "xG90": "_xG90", "xA90": "_xA90"}
+            for label, col in detail_map.items():
+                df[label] = df[col]
+                show_cols.append(label)
 
         df_show = df[show_cols].copy()
-        df_show.columns = show_labels
 
-        fmt = {"Total Pts": "{:.0f}", "PPG": "{:.2f}"}
-        if show_detail:
-            fmt |= {"xG90": "{:.3f}", "xA90": "{:.3f}", "Sel%": "{:.1f}"}
+        fmt = {"Total Pts": "{:.1f}", "PPG": "{:.2f}"}
+        if show_detail and ds.understat_loaded:
+            fmt |= {"xG": "{:.2f}", "xA": "{:.2f}", "xG90": "{:.3f}", "xA90": "{:.3f}"}
 
-        style = (
-            df_show.style
-            .format(fmt, na_rep="—")
-            .background_gradient(subset=["PPG"], cmap="YlGn")
+        style = df_show.style.format(fmt, na_rep="—").background_gradient(
+            subset=["PPG"], cmap="YlGn"
         )
-        if dp_lookup and "DP Rec" in df_show.columns and df_show["DP Rec"].notna().any():
+        if dp_lookup and df_show["DP Rec"].notna().any():
             style = style.background_gradient(subset=["DP Rec"], cmap="YlOrRd_r")
 
         st.dataframe(style, use_container_width=True, height=min(36 * top_n + 42, 700))
 
         if not dp_lookup:
             st.caption("Paste your DP rankings in the sidebar to sort by recommendation.")
+        if not ds.stats_loaded:
+            st.warning(
+                "Sleeper season stats did not load — Total Pts and PPG will show 0. "
+                "Check the Stats error in the sidebar for details."
+            )
 
 
 # ── My Team ────────────────────────────────────────────────────────────────
 with tab_mine:
     st.subheader("My Drafted Squad")
 
-    my_picks = ds.get_my_picks()
+    my_picks  = ds.get_my_picks()
     needs     = ds.get_positional_needs()
     remaining = ds.num_rounds - len(my_picks)
 
-    pos_cols = st.columns(len(POSITION_ORDER))
-    for col, pos in zip(pos_cols, POSITION_ORDER):
-        col.metric(pos, needs[pos])
+    pos_cols = st.columns(len(POS_ORDER))
+    for col, pos in zip(pos_cols, POS_ORDER):
+        col.metric(pos, needs.get(pos, 0))
 
     st.divider()
 
@@ -372,37 +380,57 @@ with tab_mine:
         st.info("No picks recorded yet for your roster.")
     else:
         df_mine = _build_board_df(my_picks, include_dp=False)
-        show_mine = ["Name", "Pos", "Club", "Total Pts", "PPG", "ADP"]
-        df_show_mine = df_mine[show_mine].copy()
-        df_show_mine = df_show_mine.sort_values(["Pos", "PPG"], ascending=[True, False])
+        show_mine = ["Name", "Pos", "Club", "Total Pts", "PPG", "GW"]
+        df_show_mine = df_mine[show_mine].sort_values(["Pos", "PPG"], ascending=[True, False])
         df_show_mine.index = range(1, len(df_show_mine) + 1)
         st.dataframe(
-            df_show_mine.style.format({"Total Pts": "{:.0f}", "PPG": "{:.2f}"}, na_rep="—"),
+            df_show_mine.style.format({"Total Pts": "{:.1f}", "PPG": "{:.2f}"}, na_rep="—"),
             use_container_width=True,
         )
 
     if remaining > 0:
         st.divider()
         st.subheader(f"Top 3 per position  ({remaining} picks left)")
-        exp_cols = st.columns(len(POSITION_ORDER))
-        for col, pos in zip(exp_cols, POSITION_ORDER):
+        exp_cols = st.columns(len(POS_ORDER))
+        for col, pos in zip(exp_cols, POS_ORDER):
             top3 = ds.get_available(pos)[:3]
             col.markdown(f"**{pos}**")
             for p in top3:
-                norm  = _norm_name(p["name"])
-                dp_tag = f" · DP#{dp_lookup[norm]}" if norm in dp_lookup else ""
-                col.markdown(f"- {p['web_name']} *({p['ppg']:.1f} ppg{dp_tag})*")
+                norm    = _norm_name(p["name"])
+                dp_tag  = f" · DP#{dp_lookup[norm]}" if norm in dp_lookup else ""
+                xg_tag  = f" · xG90={p['xG90']:.2f}" if p.get("xG90") else ""
+                col.markdown(f"- {p['web_name']} *({p['ppg']:.1f} ppg{dp_tag}{xg_tag})*")
     elif my_picks:
         st.success("Squad complete — draft finished!")
 
 
 # ── ADP / Value ────────────────────────────────────────────────────────────
 with tab_adp:
-    st.subheader("ADP vs Value")
+    st.subheader("ADP / Value")
+
+    # Manual ADP paste
+    with st.expander("Paste ADP data", expanded=not bool(dp_lookup)):
+        st.markdown("One per line: `Player Name, ADP pick number`")
+        adp_text = st.text_area(
+            "ADP", height=140,
+            placeholder="Haaland, 1\nSalah, 2\n…",
+            label_visibility="collapsed",
+        )
+
+    manual_adp: dict[str, int] = {}
+    if adp_text.strip():
+        for line in adp_text.strip().splitlines():
+            parts = line.rsplit(",", 1)
+            if len(parts) == 2:
+                try:
+                    manual_adp[_norm_name(parts[0].strip())] = int(parts[1].strip())
+                except ValueError:
+                    pass
+
     st.caption(
-        "**ADP** = rank by FPL selection % (proxy for community consensus). "
-        "**DP Rec** = your own pre-draft ranking. "
-        "**Diff** = ADP − PPG rank: positive means the community is sleeping on them."
+        "**PPG Rank** = order by 25/26 Sleeper PPG. "
+        "**ADP** = pasted pick number. "
+        "**ADP−PPG** positive = community sleeping on this player."
     )
     st.divider()
 
@@ -411,29 +439,34 @@ with tab_adp:
     for i, p in enumerate(all_avail, 1):
         norm    = _norm_name(p["name"])
         dp_rec  = dp_lookup.get(norm)
-        adp     = p.get("adp_rank")
-        ppg_rank = i
-        diff    = (adp - ppg_rank) if adp is not None else None
+        adp     = manual_adp.get(norm)
+        diff    = (adp - i) if adp is not None else None
         rows_adp.append({
-            "Name":     p["name"],
-            "Pos":      p["position"],
-            "Club":     p["team"],
-            "Total Pts":p["total_points"],
-            "PPG":      p["ppg"],
-            "PPG Rank": ppg_rank,
-            "ADP":      adp,
-            "ADP−PPG":  diff,
-            "DP Rec":   dp_rec,
+            "Name":      p["name"],
+            "Pos":       p["position"],
+            "Club":      p["team"],
+            "Total Pts": p["total_pts"],
+            "PPG":       p["ppg"],
+            "PPG Rank":  i,
+            "ADP":       adp,
+            "ADP−PPG":   diff,
+            "DP Rec":    dp_rec,
         })
 
-    df_adp = pd.DataFrame(rows_adp).sort_values("PPG", ascending=False)
+    if ds.understat_loaded:
+        for row, p in zip(rows_adp, all_avail):
+            row["xG90"] = p.get("xG90")
+            row["xA90"] = p.get("xA90")
+
+    df_adp = pd.DataFrame(rows_adp)
     df_adp.index = range(1, len(df_adp) + 1)
 
-    fmt_adp = {"PPG": "{:.2f}", "Total Pts": "{:.0f}"}
-    style_adp = (
-        df_adp.style
-        .format(fmt_adp, na_rep="—")
-        .background_gradient(subset=["PPG"], cmap="YlOrRd")
+    fmt_adp = {"PPG": "{:.2f}", "Total Pts": "{:.1f}"}
+    if ds.understat_loaded:
+        fmt_adp |= {"xG90": "{:.3f}", "xA90": "{:.3f}"}
+
+    style_adp = df_adp.style.format(fmt_adp, na_rep="—").background_gradient(
+        subset=["PPG"], cmap="YlOrRd"
     )
     if df_adp["ADP−PPG"].notna().any():
         style_adp = style_adp.background_gradient(
@@ -441,3 +474,6 @@ with tab_adp:
         )
 
     st.dataframe(style_adp, use_container_width=True, height=650)
+
+    if not manual_adp:
+        st.info("Paste ADP data above to populate the ADP and ADP−PPG columns.")

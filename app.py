@@ -143,6 +143,17 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
+    auto_col, clear_col = st.columns(2)
+    with auto_col:
+        if st.button("🤖 Auto-rank", use_container_width=True,
+                     help="Generate DP rankings from the projection model"):
+            st.session_state["_trigger_auto_dp"] = True
+            st.rerun()
+    with clear_col:
+        if st.button("🗑 Clear", use_container_width=True):
+            st.session_state["dp_rankings_text"] = ""
+            st.rerun()
+
     st.divider()
 
     # ── Refresh control ────────────────────────────────────────────────
@@ -178,6 +189,40 @@ ds.my_roster_id = my_roster_id
 ds.inject_player_db(player_db)   # cheap — stable dict reference from cache
 
 POS_ORDER = ds.position_order
+
+# ---------------------------------------------------------------------------
+# Auto-DP generation (triggered by sidebar button, runs after DB is loaded)
+# ---------------------------------------------------------------------------
+
+def _auto_dp_score(p: dict) -> float:
+    """
+    Scoring for auto-generated DP rankings.
+    projected_pts is the primary signal — it already captures Sleeper's full
+    scoring model including defensive volume for MIDs.
+    Small xG90/xA90 bonus for FWD/MID surfaces attackers whose raw pts may
+    understate quality (e.g. a striker with high xG but low team chances).
+    Players with no stats fall to bottom, sorted by FPL cost proxy.
+    """
+    proj = p.get("projected_pts") or 0.0
+    if proj > 0:
+        pos = p.get("position", "")
+        xg90 = p.get("xG90") or 0.0
+        xa90 = p.get("xA90") or 0.0
+        if pos in ("FWD", "MID"):
+            # xG90 → rough Sleeper pts equivalent: goal ≈ 9 pts so xG90 * 9 * 0.5
+            proj += xg90 * 4.5 + xa90 * 2.5
+        return proj
+    # No stats: use FPL cost as a rough proxy (cost already in £m)
+    return (p.get("cost") or 0.0) - 100   # negative so below all projected players
+
+if st.session_state.pop("_trigger_auto_dp", False):
+    all_players = list(ds.player_data.values())
+    # Exclude GKs from FWD/MID xG bonus (already handled by pos check)
+    ranked = sorted(all_players, key=_auto_dp_score, reverse=True)
+    # Top 120 covers 17 rounds × ~7 relevant positions — enough for full draft
+    names  = [p["name"] for p in ranked[:120] if p.get("name")]
+    st.session_state["dp_rankings_text"] = "\n".join(names)
+    st.rerun()
 
 # Push to session_state so the live-board fragment can access without re-creation
 st.session_state["ds"]           = ds

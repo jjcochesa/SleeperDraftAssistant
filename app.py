@@ -40,7 +40,7 @@ with st.sidebar:
     st.caption("EPL · Snake · 10 teams · 17 rounds")
     st.divider()
 
-    # ── Draft selection ────────────────────────────────────────────────
+    # ── Draft ──────────────────────────────────────────────────────────
     if "drafts" not in st.session_state:
         with st.spinner("Loading drafts…"):
             try:
@@ -66,22 +66,19 @@ with st.sidebar:
 
     st.divider()
 
-    # ── Roster identity ───────────────────────────────────────────────
+    # ── Your team ──────────────────────────────────────────────────────
     st.markdown("**Your team**")
-
     username_input = st.text_input(
         "Sleeper username",
-        placeholder="enter username to auto-detect",
+        placeholder="auto-detects your roster",
         key="username_field",
     )
 
     detected_roster_id: int | None = None
-    detected_display_name: str | None = None
-
     if username_input:
         cache_key = f"user_lookup_{username_input}"
         if cache_key not in st.session_state:
-            with st.spinner("Looking up user…"):
+            with st.spinner("Looking up…"):
                 try:
                     user_data = get_sleeper_user(username_input)
                     uid = user_data.get("user_id")
@@ -93,17 +90,15 @@ with st.sidebar:
                 except Exception:
                     st.session_state[cache_key] = {"roster_id": None, "display_name": None}
 
-        result = st.session_state[cache_key]
-        if result["roster_id"]:
-            detected_roster_id = result["roster_id"]
-            detected_display_name = result["display_name"]
-            st.success(f"✓ **{detected_display_name}** → Roster #{detected_roster_id}")
+        lu = st.session_state[cache_key]
+        if lu["roster_id"]:
+            detected_roster_id = lu["roster_id"]
+            st.success(f"✓ **{lu['display_name']}** → Roster #{detected_roster_id}")
         else:
             st.warning("Username not found in this league.")
 
-    roster_label = "Roster ID" + (" (override)" if detected_roster_id else " (1–10)")
     my_roster_id: int = st.number_input(
-        roster_label,
+        "Roster ID" + (" (override)" if detected_roster_id else " (1–10)"),
         min_value=1, max_value=10,
         value=detected_roster_id or 1,
         step=1,
@@ -111,24 +106,46 @@ with st.sidebar:
 
     st.divider()
 
-    # ── Refresh controls ──────────────────────────────────────────────
+    # ── DP Rankings ────────────────────────────────────────────────────
+    st.markdown("**DP Recommended rankings**")
+    st.caption("One player per line, in your preferred draft order.")
+    dp_text: str = st.text_area(
+        "DP rankings",
+        key="dp_rankings_text",
+        placeholder="Haaland\nSalah\nTrent Alexander-Arnold\n…",
+        height=220,
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+
+    # ── Refresh ────────────────────────────────────────────────────────
     auto_refresh = st.toggle("Auto-refresh (10 s)", value=True)
     if st.button("🔄 Refresh now", use_container_width=True):
         st.session_state.pop(f"picks_ts_{selected_draft_id}", None)
 
     st.divider()
-
-    # ── Data source status (populated after DraftState loads) ─────────
-    ds_status_placeholder = st.empty()
+    ds_status_slot = st.empty()
 
 
 # ---------------------------------------------------------------------------
-# Session-cached DraftState
+# Parse DP rankings
+# ---------------------------------------------------------------------------
+
+dp_lookup: dict[str, int] = {}
+if dp_text.strip():
+    for i, line in enumerate(dp_text.strip().splitlines(), 1):
+        name = line.strip()
+        if name:
+            dp_lookup[_norm_name(name)] = i
+
+
+# ---------------------------------------------------------------------------
+# DraftState (cached per draft_id)
 # ---------------------------------------------------------------------------
 
 @st.cache_resource(show_spinner="Loading players & projections…")
 def _load_draft_state(draft_id: str, league_id: str) -> DraftState:
-    """Heavy one-time load cached globally per draft_id."""
     ds = DraftState(league_id, draft_id)
     ds.load_static(understat_year=2025)
     return ds
@@ -154,14 +171,12 @@ if auto_refresh:
             unsafe_allow_html=True,
         )
 
-# Fill sidebar data-source status now that ds is loaded
-with ds_status_placeholder.container():
-    fpl_icon = "✅" if ds.fpl_loaded else "❌"
-    us_icon = "✅" if ds.understat_loaded else ("⚠️" if ds.understat_error else "⏳")
-    adp_icon = "✅" if ds.adp_data else "—"
-    st.caption(
-        f"FPL {fpl_icon}  ·  Understat {us_icon}  ·  ADP {adp_icon}"
-    )
+# Sidebar data-source status
+with ds_status_slot.container():
+    fpl_icon  = "✅" if ds.fpl_loaded else "❌"
+    us_icon   = "✅" if ds.understat_loaded else ("⚠️" if ds.understat_error else "—")
+    dp_icon   = f"✅ {len(dp_lookup)} players" if dp_lookup else "—"
+    st.caption(f"FPL {fpl_icon}  ·  Understat {us_icon}  ·  DP {dp_icon}")
     if ds.understat_error:
         with st.expander("Understat error"):
             st.code(ds.understat_error, language=None)
@@ -173,22 +188,69 @@ with ds_status_placeholder.container():
 
 status_icon = {"pre_draft": "🟡", "drafting": "🟢", "complete": "🔵"}.get(ds.status, "⚪")
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Status", f"{status_icon} {ds.status.replace('_', ' ').title()}")
+c1.metric("Status",       f"{status_icon} {ds.status.replace('_', ' ').title()}")
 c2.metric("Current Pick", f"{ds.current_pick} / {ds.total_picks}")
-c3.metric("Drafted", len(ds.drafted_ids))
-c4.metric("Available", len(ds.players) - len(ds.drafted_ids))
+c3.metric("Drafted",      len(ds.drafted_ids))
+c4.metric("Available",    len(ds.players) - len(ds.drafted_ids))
 my_slot = ds.get_my_draft_slot()
-c5.metric("My Slot", my_slot if my_slot else "—")
+c5.metric("My Slot",      my_slot if my_slot else "—")
 
 my_next = ds.get_my_next_picks()
 if my_next:
     nxt_str = ", ".join(str(p) for p in my_next[:6])
-    suffix = "…" if len(my_next) > 6 else ""
-    gap = my_next[0] - ds.current_pick
-    timing = "**now**" if gap == 0 else f"in {gap} pick{'s' if gap != 1 else ''}"
+    suffix  = "…" if len(my_next) > 6 else ""
+    gap     = my_next[0] - ds.current_pick
+    timing  = "**now**" if gap == 0 else f"in {gap} pick{'s' if gap != 1 else ''}"
     st.info(f"Your next picks: **{nxt_str}{suffix}** — pick #{my_next[0]} is up {timing}")
 
 st.divider()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _build_board_df(players: list[dict], include_dp: bool = True) -> pd.DataFrame:
+    """
+    Build the core display DataFrame: Total Pts, PPG, ADP, DP Rec.
+    Sorted by DP Rec if loaded, otherwise by PPG descending.
+    """
+    rows = []
+    for p in players:
+        norm = _norm_name(p["name"])
+        dp_rec = dp_lookup.get(norm)
+        rows.append({
+            "Name":       p["name"],
+            "Pos":        p["position"],
+            "Club":       p["team"],
+            "Total Pts":  p["total_points"],
+            "PPG":        p["ppg"],
+            "ADP":        p["adp_rank"],
+            "DP Rec":     dp_rec,
+            # extras kept for detail view
+            "_xG90":      p.get("xG90"),
+            "_xA90":      p.get("xA90"),
+            "_mins":      p["minutes"],
+            "_goals":     p["goals"],
+            "_assists":   p["assists"],
+            "_sel_pct":   p["selected_pct"],
+            "_cost":      p["cost"],
+        })
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    if dp_lookup and include_dp:
+        # DP Rec rows first (sorted by rank), then unranked by PPG
+        ranked   = df[df["DP Rec"].notna()].sort_values("DP Rec")
+        unranked = df[df["DP Rec"].isna()].sort_values("PPG", ascending=False)
+        df = pd.concat([ranked, unranked], ignore_index=True)
+    else:
+        df = df.sort_values("PPG", ascending=False)
+
+    df.index = range(1, len(df) + 1)
+    return df
 
 
 # ---------------------------------------------------------------------------
@@ -224,9 +286,7 @@ with tab_board:
     def _style_cell(val: str) -> str:
         if val.startswith("★"):
             return "background-color:#1a472a;color:#a8e6a3;font-weight:bold"
-        if val:
-            return "color:#e0e0e0"
-        return "color:#444"
+        return "color:#e0e0e0" if val else "color:#444"
 
     st.dataframe(
         df_board.style.applymap(_style_cell),
@@ -238,13 +298,15 @@ with tab_board:
 
 # ── Best Available ─────────────────────────────────────────────────────────
 with tab_avail:
-    st.subheader("Best Available Players")
+    st.subheader("Best Available")
 
-    col_pos, col_n = st.columns([3, 1])
+    col_pos, col_n, col_detail = st.columns([3, 1, 1])
     with col_pos:
         pos_filter = st.radio("Position", ["All"] + POSITION_ORDER, horizontal=True)
     with col_n:
         top_n = st.selectbox("Show", [25, 50, 100], index=0)
+    with col_detail:
+        show_detail = st.toggle("Detail cols", value=False)
 
     pos_arg = None if pos_filter == "All" else pos_filter
     available = ds.get_available(pos_arg)[:top_n]
@@ -252,34 +314,44 @@ with tab_avail:
     if not available:
         st.info("No players available for this filter.")
     else:
-        df_avail = pd.DataFrame(available)
+        df = _build_board_df(available)
 
-        show_xga = ds.understat_loaded and df_avail["xG90"].notna().any()
+        # Core columns always shown
+        show_cols   = ["Name", "Pos", "Club", "Total Pts", "PPG", "ADP", "DP Rec"]
+        show_labels = show_cols[:]
 
-        base_cols = ["name", "position", "team", "projected_pts", "total_points",
-                     "minutes", "goals", "assists", "form", "ep_next", "selected_pct", "cost"]
-        base_labels = ["Name", "Pos", "Club", "Proj Pts", "Season Pts",
-                       "Mins", "Goals", "Assists", "Form", "EP Next", "Sel %", "Cost £m"]
+        # Detail columns (toggle)
+        if show_detail:
+            extras = {
+                "xG90": "_xG90", "xA90": "_xA90",
+                "Mins": "_mins", "Goals": "_goals",
+                "Assists": "_assists", "Sel%": "_sel_pct", "Cost": "_cost",
+            }
+            for label, col in extras.items():
+                if col in df.columns:
+                    df[label] = df[col]
+                    show_cols.append(label)
+                    show_labels.append(label)
 
-        if show_xga:
-            base_cols += ["xG", "xA", "xG90", "xA90", "npxG"]
-            base_labels += ["xG", "xA", "xG90", "xA90", "npxG"]
+        df_show = df[show_cols].copy()
+        df_show.columns = show_labels
 
-        df_show = df_avail[base_cols].copy()
-        df_show.columns = base_labels
-        df_show.index = range(1, len(df_show) + 1)
+        fmt = {"Total Pts": "{:.0f}", "PPG": "{:.2f}"}
+        if show_detail:
+            fmt |= {"xG90": "{:.3f}", "xA90": "{:.3f}", "Sel%": "{:.1f}"}
 
-        fmt = {"Proj Pts": "{:.1f}", "Form": "{:.1f}", "EP Next": "{:.2f}",
-               "Sel %": "{:.1f}", "Cost £m": "{:.1f}"}
-        if show_xga:
-            fmt |= {"xG": "{:.2f}", "xA": "{:.2f}", "xG90": "{:.3f}",
-                    "xA90": "{:.3f}", "npxG": "{:.2f}"}
-
-        st.dataframe(
-            df_show.style.background_gradient(subset=["Proj Pts"], cmap="YlGn").format(fmt),
-            use_container_width=True,
-            height=min(36 * top_n + 42, 700),
+        style = (
+            df_show.style
+            .format(fmt, na_rep="—")
+            .background_gradient(subset=["PPG"], cmap="YlGn")
         )
+        if dp_lookup and "DP Rec" in df_show.columns and df_show["DP Rec"].notna().any():
+            style = style.background_gradient(subset=["DP Rec"], cmap="YlOrRd_r")
+
+        st.dataframe(style, use_container_width=True, height=min(36 * top_n + 42, 700))
+
+        if not dp_lookup:
+            st.caption("Paste your DP rankings in the sidebar to sort by recommendation.")
 
 
 # ── My Team ────────────────────────────────────────────────────────────────
@@ -287,7 +359,7 @@ with tab_mine:
     st.subheader("My Drafted Squad")
 
     my_picks = ds.get_my_picks()
-    needs = ds.get_positional_needs()
+    needs     = ds.get_positional_needs()
     remaining = ds.num_rounds - len(my_picks)
 
     pos_cols = st.columns(len(POSITION_ORDER))
@@ -299,28 +371,13 @@ with tab_mine:
     if not my_picks:
         st.info("No picks recorded yet for your roster.")
     else:
-        df_mine = pd.DataFrame(my_picks)
-        show_xga_mine = ds.understat_loaded and df_mine["xG90"].notna().any()
-
-        mine_cols = ["name", "position", "team", "projected_pts",
-                     "goals", "assists", "clean_sheets", "form"]
-        mine_labels = ["Name", "Pos", "Club", "Proj Pts", "Goals", "Assists", "CS", "Form"]
-
-        if show_xga_mine:
-            mine_cols += ["xG", "xA", "xG90", "xA90"]
-            mine_labels += ["xG", "xA", "xG90", "xA90"]
-
-        df_show_mine = df_mine[mine_cols].copy()
-        df_show_mine.columns = mine_labels
-        df_show_mine = df_show_mine.sort_values(["Pos", "Proj Pts"], ascending=[True, False])
+        df_mine = _build_board_df(my_picks, include_dp=False)
+        show_mine = ["Name", "Pos", "Club", "Total Pts", "PPG", "ADP"]
+        df_show_mine = df_mine[show_mine].copy()
+        df_show_mine = df_show_mine.sort_values(["Pos", "PPG"], ascending=[True, False])
         df_show_mine.index = range(1, len(df_show_mine) + 1)
-
-        fmt_mine = {"Proj Pts": "{:.1f}", "Form": "{:.1f}"}
-        if show_xga_mine:
-            fmt_mine |= {"xG": "{:.2f}", "xA": "{:.2f}", "xG90": "{:.3f}", "xA90": "{:.3f}"}
-
         st.dataframe(
-            df_show_mine.style.format(fmt_mine),
+            df_show_mine.style.format({"Total Pts": "{:.0f}", "PPG": "{:.2f}"}, na_rep="—"),
             use_container_width=True,
         )
 
@@ -332,93 +389,55 @@ with tab_mine:
             top3 = ds.get_available(pos)[:3]
             col.markdown(f"**{pos}**")
             for p in top3:
-                xga_note = (
-                    f" xG90={p['xG90']:.2f}" if p.get("xG90") is not None else ""
-                )
-                col.markdown(f"- {p['web_name']} *(proj {p['projected_pts']:.0f}{xga_note})*")
+                norm  = _norm_name(p["name"])
+                dp_tag = f" · DP#{dp_lookup[norm]}" if norm in dp_lookup else ""
+                col.markdown(f"- {p['web_name']} *({p['ppg']:.1f} ppg{dp_tag})*")
     elif my_picks:
         st.success("Squad complete — draft finished!")
 
 
 # ── ADP / Value ────────────────────────────────────────────────────────────
 with tab_adp:
-    st.subheader("ADP vs Projected Value")
-
-    # ── Load ADP from a previous draft ────────────────────────────────
-    other_drafts = [d for d in drafts if d["draft_id"] != selected_draft_id]
-    if other_drafts:
-        st.markdown("**Load ADP from a previous draft**")
-        adp_draft_id = st.selectbox(
-            "Historical draft",
-            options=[d["draft_id"] for d in other_drafts],
-            format_func=lambda x: draft_labels.get(x, x),
-            key="adp_draft_select",
-        )
-        if st.button("Load as ADP baseline", key="load_adp_btn"):
-            with st.spinner("Fetching historical picks…"):
-                ds.load_adp_from_draft(adp_draft_id)
-            st.success(f"Loaded {len(ds.adp_data)} players as ADP baseline.")
-        if ds.adp_data:
-            st.caption(f"ADP loaded: {len(ds.adp_data)} players from historical draft.")
-
-    # ── Manual ADP paste (fallback / override) ─────────────────────────
-    with st.expander("Paste ADP manually (overrides loaded data)", expanded=not bool(ds.adp_data)):
-        st.markdown("One per line: `Player Name, ADP rank` — e.g. `Salah, 1`")
-        adp_text = st.text_area("ADP data", height=140, placeholder="Haaland, 1\nSalah, 2\n…")
-
-    manual_adp: dict | None = None
-    if adp_text.strip():
-        manual_adp = {}
-        for line in adp_text.strip().splitlines():
-            parts = line.rsplit(",", 1)
-            if len(parts) == 2:
-                try:
-                    manual_adp[_norm_name(parts[0].strip())] = int(parts[1].strip())
-                except ValueError:
-                    pass
-
+    st.subheader("ADP vs Value")
     st.caption(
-        "**Value Diff** = ADP rank − projected rank. "
-        "Positive = undervalued (falling in the draft relative to projected output)."
+        "**ADP** = rank by FPL selection % (proxy for community consensus). "
+        "**DP Rec** = your own pre-draft ranking. "
+        "**Diff** = ADP − PPG rank: positive means the community is sleeping on them."
     )
     st.divider()
 
-    analysis = ds.get_adp_analysis(manual_adp)[:60]
+    all_avail = ds.get_available()
+    rows_adp = []
+    for i, p in enumerate(all_avail, 1):
+        norm    = _norm_name(p["name"])
+        dp_rec  = dp_lookup.get(norm)
+        adp     = p.get("adp_rank")
+        ppg_rank = i
+        diff    = (adp - ppg_rank) if adp is not None else None
+        rows_adp.append({
+            "Name":     p["name"],
+            "Pos":      p["position"],
+            "Club":     p["team"],
+            "Total Pts":p["total_points"],
+            "PPG":      p["ppg"],
+            "PPG Rank": ppg_rank,
+            "ADP":      adp,
+            "ADP−PPG":  diff,
+            "DP Rec":   dp_rec,
+        })
 
-    if analysis:
-        has_adp = any(row["adp"] is not None for row in analysis)
+    df_adp = pd.DataFrame(rows_adp).sort_values("PPG", ascending=False)
+    df_adp.index = range(1, len(df_adp) + 1)
 
-        base_cols = ["name", "position", "team", "projected_pts", "selected_pct", "value_rank"]
-        base_labels = ["Name", "Pos", "Club", "Proj Pts", "Sel %", "Value Rank"]
-
-        if has_adp:
-            base_cols += ["adp", "value_diff"]
-            base_labels += ["ADP", "Value Diff"]
-
-        if ds.understat_loaded:
-            base_cols += ["xG90", "xA90"]
-            base_labels += ["xG90", "xA90"]
-
-        df_adp = pd.DataFrame(analysis)[base_cols].copy()
-        df_adp.columns = base_labels
-        df_adp.index = range(1, len(df_adp) + 1)
-
-        fmt_adp = {"Proj Pts": "{:.1f}", "Sel %": "{:.1f}"}
-        if ds.understat_loaded:
-            fmt_adp |= {"xG90": "{:.3f}", "xA90": "{:.3f}"}
-
-        style = df_adp.style.format(fmt_adp, na_rep="—").background_gradient(
-            subset=["Proj Pts"], cmap="YlOrRd"
+    fmt_adp = {"PPG": "{:.2f}", "Total Pts": "{:.0f}"}
+    style_adp = (
+        df_adp.style
+        .format(fmt_adp, na_rep="—")
+        .background_gradient(subset=["PPG"], cmap="YlOrRd")
+    )
+    if df_adp["ADP−PPG"].notna().any():
+        style_adp = style_adp.background_gradient(
+            subset=["ADP−PPG"], cmap="RdYlGn", vmin=-20, vmax=20
         )
-        if has_adp:
-            style = style.background_gradient(
-                subset=["Value Diff"], cmap="RdYlGn", vmin=-10, vmax=10
-            )
 
-        st.dataframe(style, use_container_width=True, height=600)
-
-        if not has_adp:
-            st.info(
-                "No ADP loaded — showing by projected value only. "
-                "Load a historical draft above or paste ADP manually."
-            )
+    st.dataframe(style_adp, use_container_width=True, height=650)

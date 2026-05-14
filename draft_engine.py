@@ -166,7 +166,6 @@ def build_fpl_projections(understat: Optional[dict] = None) -> dict[str, dict]:
         if understat:
             xga = understat.get(key)
             if xga is None:
-                # Try last-name-only fallback
                 last = _norm_name(p["second_name"])
                 xga = next((v for k, v in understat.items() if last and k.endswith(last)), None)
 
@@ -177,6 +176,8 @@ def build_fpl_projections(understat: Optional[dict] = None) -> dict[str, dict]:
             "team": teams.get(p["team"], ""),
             "position": fpl_pos.get(p["element_type"], "UNK"),
             "total_points": int(p.get("total_points") or 0),
+            # FPL's own points-per-game field (avg across appearances)
+            "ppg": float(p.get("points_per_game") or 0),
             "minutes": int(p.get("minutes") or 0),
             "goals": int(p.get("goals_scored") or 0),
             "assists": int(p.get("assists") or 0),
@@ -185,7 +186,6 @@ def build_fpl_projections(understat: Optional[dict] = None) -> dict[str, dict]:
             "ep_next": float(p.get("ep_next") or 0),
             "selected_pct": float(p.get("selected_by_percent") or 0),
             "now_cost": (p.get("now_cost") or 0) / 10,
-            # Understat fields (None if not matched)
             "xG": xga.get("xG") if xga else None,
             "xA": xga.get("xA") if xga else None,
             "xG90": xga.get("xG90") if xga else None,
@@ -195,6 +195,12 @@ def build_fpl_projections(understat: Optional[dict] = None) -> dict[str, dict]:
             "key_passes": xga.get("key_passes") if xga else None,
             "projected_pts": _project_score(p, xga),
         }
+
+    # ADP proxy: rank all players by FPL selection % (higher sel% = lower/better ADP rank)
+    sorted_keys = sorted(projections, key=lambda k: projections[k]["selected_pct"], reverse=True)
+    for rank, key in enumerate(sorted_keys, 1):
+        projections[key]["adp_rank"] = rank
+
     return projections
 
 
@@ -391,8 +397,10 @@ class DraftState:
             "web_name": proj.get("web_name") or sp.get("last_name") or full_name,
             "team": proj.get("team") or sp.get("team", ""),
             "position": _norm_pos(raw_pos) if raw_pos else "UNK",
-            "projected_pts": proj.get("projected_pts", 0.0),
             "total_points": proj.get("total_points", 0),
+            "ppg": proj.get("ppg", 0.0),
+            "adp_rank": proj.get("adp_rank"),
+            "projected_pts": proj.get("projected_pts", 0.0),
             "minutes": proj.get("minutes", 0),
             "goals": proj.get("goals", 0),
             "assists": proj.get("assists", 0),

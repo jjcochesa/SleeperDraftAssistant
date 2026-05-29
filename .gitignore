@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.env
+.streamlit/secrets.toml
+# Keep data/pl_stats_2024.* — those are the harvested permanent cache

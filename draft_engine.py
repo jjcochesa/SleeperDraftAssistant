@@ -317,17 +317,42 @@ def _calc_pts(raw: dict, position: str) -> float:
 # Player data builder
 # ---------------------------------------------------------------------------
 
+def load_pl_stats(path: str = "data/pl_stats_2025.json") -> dict[str, dict]:
+    """
+    Load harvested API-Football 2025/26 PL stats from disk.
+    Returns {norm_name: stats_dict}. Empty dict if file missing.
+    """
+    import json
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return {}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    result: dict[str, dict] = {}
+    for rec in data:
+        key = rec.get("norm_name", "")
+        if key:
+            result[key] = rec
+        # Also index by lastname alone as fallback
+        last = _norm_name(rec.get("lastname", ""))
+        if last and last not in result:
+            result[f"__last__{last}"] = rec
+    return result
+
+
 def build_player_stats(
     players:      dict,
     season_stats: dict,
     fpl_lookup:   Optional[dict] = None,
     understat:    Optional[dict] = None,
     teams_lookup: Optional[dict] = None,
+    pl_stats:     Optional[dict] = None,
 ) -> dict[str, dict]:
     """
-    Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA.
+    Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA,
+    and API-Football 2025/26 PL individual stats (goals/90, SoT/90, starter_rate…).
     Joins Sleeper players ↔ stats on player_id (same key in both endpoints).
-    Name normalisation is only used for FPL and Understat cross-source matching.
+    Name normalisation is only used for FPL, Understat, and API-Football cross-source matching.
     """
     MIN_GW       = 10     # below this, projected_pts = 0 (insufficient sample)
     MIN_GW_PRIOR = 15     # only use established starters to compute position average
@@ -387,19 +412,30 @@ def build_player_stats(
         games     = min(38, round(mins / 90)) if mins > 0 else 0
         ppg       = round(total_pts / games, 2) if games > 0 else 0.0
 
+        # API-Football individual stats lookup (PL players only)
+        apif: dict = {}
+        if pl_stats:
+            apif = pl_stats.get(key) or {}
+            if not apif:
+                last = _norm_name(sp.get("last_name") or "")
+                if last:
+                    apif = pl_stats.get(f"__last__{last}") or {}
+
+        # starter_rate: fraction of appearances that were starts.
+        # From API-Football when available; defaults to 1.0 (assume starter).
+        starter_rate = apif.get("starter_rate", 1.0) if apif else 1.0
+
         # 26/27 projection with Bayesian shrinkage + availability penalty.
         # Players with < MIN_GW are excluded (projected_pts = 0).
-        # participation_rate penalises injury-prone players (Doku 19/34 → 0.56×).
+        # participation_rate = (games/34) × starter_rate, floored at 0.75 for
+        # established starters (≥25gw) with one-off injury seasons (e.g. Saka ACL).
         if games >= MIN_GW:
             prior_ppg = pos_avg.get(pos, 8.0)
             # Adaptive K: full-season veterans (34gw) get ~83% own-PPG weight;
             # fringe starters (10gw) get ~44%. Prevents over-shrinking regulars.
             k           = max(3.0, 40.0 / (games ** 0.5))
             blended_ppg = (games * ppg + k * prior_ppg) / (games + k)
-            # Floor at 0.75 only for players who played ≥25gw — protects established
-            # starters with one injury season (Saka ACL) without lifting chronically
-            # unavailable players (Doku 19gw, Cherki 17gw) who have a real injury record.
-            raw_rate           = min(1.0, games / 34)
+            raw_rate    = min(1.0, games / 34) * min(1.0, starter_rate)
             participation_rate = max(0.75, raw_rate) if games >= 25 else raw_rate
             projected_pts      = round(blended_ppg * 34 * participation_rate, 1)
         else:
@@ -472,6 +508,20 @@ def build_player_stats(
             "xG90":            xga.get("xG90"),
             "xA90":            xga.get("xA90"),
             "npxG":            xga.get("npxG"),
+            # API-Football individual stats (PL players only)
+            "starter_rate":    starter_rate,
+            "apif_goals":      apif.get("goals"),
+            "apif_assists":    apif.get("assists"),
+            "apif_sot":        apif.get("shots_on_target"),
+            "apif_key_passes": apif.get("key_passes"),
+            "apif_tackles":    apif.get("tackles_total"),
+            "apif_interceptions": apif.get("interceptions"),
+            "apif_blocks":     apif.get("tackles_blocks"),
+            "apif_saves":      apif.get("saves"),
+            "apif_goals_conceded": apif.get("goals_conceded"),
+            "apif_rating":     apif.get("rating"),
+            "apif_starts":     apif.get("starts"),
+            "apif_appearances":apif.get("appearances"),
             "projected_pts":   projected_pts,
             "has_stats":       bool(raw),
         }
@@ -830,7 +880,12 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
     # Sleeper teams endpoint — maps numeric team IDs to names (graceful fallback)
     teams_lookup = get_sleeper_teams()
 
-    player_data = build_player_stats(players, season_stats, fpl_lookup, understat, teams_lookup)
+    # API-Football harvested PL stats — individual per-player data (graceful fallback)
+    pl_stats = load_pl_stats()
+
+    player_data = build_player_stats(
+        players, season_stats, fpl_lookup, understat, teams_lookup, pl_stats
+    )
 
     return {
         "players":          players,

@@ -298,7 +298,10 @@ def _build_rankings_df(
             "_drb":      p["dribbles"],
             "_acnc":     p["accurate_crosses"],
             "_aer":      p["aerials_won"],
+            "_cs":       p["clean_sheets"],
             "_saves":    p["saves"],
+            "_hcs":      p["high_claims"],
+            "_sm":       p["smothers"],
             "_tkl":      p["tackles_won"],
             "_int":      p["interceptions"],
             "_blk":      p["blocked_shots"],
@@ -521,14 +524,15 @@ with tab_ranks:
 
         if show_detail:
             detail_map = {
-                "Goals":   "_goals",   "Assists": "_assists",
-                "SoT":     "_sot",     "KP":      "_kp",
-                "Drb":     "_drb",     "AcX":     "_acnc",
-                "Aer":     "_aer",     "Saves":   "_saves",
-                "Tkl":     "_tkl",     "Int":     "_int",
-                "Blk":     "_blk",
-                "YC":      "_yc",      "RC":      "_rc",
-                "FPL Own%":"_own",
+                "Goals":    "_goals",  "Assists":  "_assists",
+                "SoT":      "_sot",    "KP":       "_kp",
+                "Drb":      "_drb",    "AcX":      "_acnc",
+                "Aer":      "_aer",    "CS":       "_cs",
+                "Saves":    "_saves",  "HCS":      "_hcs",
+                "SM":       "_sm",     "Tkl":      "_tkl",
+                "Int":      "_int",    "Blk":      "_blk",
+                "YC":       "_yc",     "RC":       "_rc",
+                "FPL Own%": "_own",
             }
             if ds.understat_loaded:
                 detail_map |= {"xG": "_xG", "xA": "_xA", "xG90": "_xG90", "xA90": "_xA90"}

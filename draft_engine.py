@@ -51,28 +51,33 @@ SLEEPER_SCORING: dict[str, dict | float] = {
     "penalty_kicks_drawn":  2.0,
 }
 
-# Sleeper API short codes → canonical stat name (try fields in order)
+# Sleeper API short codes → canonical stat name (confirmed from official Sleeper stat table)
 _SLEEPER_FIELD: dict[str, list[str]] = {
     "goals":                ["g"],
     "assists":              ["at"],
     "shots_on_target":      ["sot"],
     "key_passes":           ["kp"],
     "successful_dribbles":  ["drb"],
-    "accurate_crosses":     ["acnc"],
+    "accurate_crosses":     ["ac"],
     "aerials_won":          ["aer"],
     "effective_clearances": ["clr"],
-    "saves":                ["svs"],
-    "clean_sheets":         ["cos"],
+    "saves":                ["sv"],
+    "clean_sheets":         ["cs"],
+    "high_claims":          ["hcs"],
+    "smothers":             ["sm"],
     "tackles_won":          ["tkw"],
     "interceptions":        ["int"],
     "blocked_shots":        ["bs"],
     "goals_against":        ["ga"],
     "own_goals":            ["og"],
-    "penalties_missed":     ["pm"],
-    "penalties_saved":      ["ps"],
+    "penalties_missed":     ["pkm"],
+    "penalties_saved":      ["pks"],
+    "penalty_kicks_drawn":  ["pkd"],
     "yellow_card":          ["yc"],
+    "second_yellow":        ["yc2"],
     "red_card":             ["rc"],
     "minutes":              ["min"],
+    "games_played":         ["gp"],
     "dispossessed":         ["dis"],
 }
 
@@ -424,7 +429,8 @@ def build_player_stats(
         # pts_std used verbatim when present; fallback reconstructs from stats
         total_pts = _calc_pts(raw, pos)
         mins      = _raw_stat(raw, "minutes")
-        games     = min(38, round(mins / 90)) if mins > 0 else 0
+        gp        = _raw_stat(raw, "games_played")
+        games     = int(min(38, gp if gp > 0 else (round(mins / 90) if mins > 0 else 0)))
         ppg       = round(total_pts / games, 2) if games >= 15 else 0.0
 
         # API-Football individual stats lookup (PL players only)
@@ -459,7 +465,7 @@ def build_player_stats(
         else:
             projected_pts = 0.0
 
-        # Raw stats
+        # Raw stats (field codes confirmed from official Sleeper stat table)
         goals  = _raw_stat(raw, "goals")
         assists= _raw_stat(raw, "assists")
         sot    = _raw_stat(raw, "shots_on_target")
@@ -467,10 +473,10 @@ def build_player_stats(
         drb    = _raw_stat(raw, "successful_dribbles")
         acnc   = _raw_stat(raw, "accurate_crosses")
         aer    = _raw_stat(raw, "aerials_won")
+        cs     = _raw_stat(raw, "clean_sheets")
         saves  = _raw_stat(raw, "saves")
-        # NOTE: Sleeper's "cos" field shows values >38 for outfield players, so it is NOT
-        # clean sheets count. Removing from display until the correct field code is confirmed.
-        # pts_std (used for total_pts) comes from Sleeper directly so scoring is unaffected.
+        hcs    = _raw_stat(raw, "high_claims")
+        sm     = _raw_stat(raw, "smothers")
         tkl    = _raw_stat(raw, "tackles_won")
         ints   = _raw_stat(raw, "interceptions")
         blk    = _raw_stat(raw, "blocked_shots")
@@ -518,7 +524,10 @@ def build_player_stats(
             "dribbles":           int(drb),
             "accurate_crosses":   int(acnc),
             "aerials_won":        int(aer),
+            "clean_sheets":       int(cs),
             "saves":              int(saves),
+            "high_claims":        int(hcs),
+            "smothers":           int(sm),
             "tackles_won":        int(tkl),
             "interceptions":      int(ints),
             "blocked_shots":      int(blk),

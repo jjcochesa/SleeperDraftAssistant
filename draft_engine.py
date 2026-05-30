@@ -317,6 +317,20 @@ def _calc_pts(raw: dict, position: str) -> float:
 # Player data builder
 # ---------------------------------------------------------------------------
 
+def load_fixture_stats(path: str = "data/pl_fixture_stats_2025.json") -> dict[str, dict]:
+    """
+    Load harvested fixture-level stats (dispossessed, crosses, saves).
+    Returns {norm_name: stats_dict}. Empty dict if file missing.
+    """
+    import json
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return {}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    return data  # already keyed by norm_name
+
+
 def load_pl_stats(path: str = "data/pl_stats_2025.json") -> dict[str, dict]:
     """
     Load harvested API-Football 2025/26 PL stats from disk.
@@ -341,12 +355,13 @@ def load_pl_stats(path: str = "data/pl_stats_2025.json") -> dict[str, dict]:
 
 
 def build_player_stats(
-    players:      dict,
-    season_stats: dict,
-    fpl_lookup:   Optional[dict] = None,
-    understat:    Optional[dict] = None,
-    teams_lookup: Optional[dict] = None,
-    pl_stats:     Optional[dict] = None,
+    players:        dict,
+    season_stats:   dict,
+    fpl_lookup:     Optional[dict] = None,
+    understat:      Optional[dict] = None,
+    teams_lookup:   Optional[dict] = None,
+    pl_stats:       Optional[dict] = None,
+    fixture_stats:  Optional[dict] = None,
 ) -> dict[str, dict]:
     """
     Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA,
@@ -420,6 +435,9 @@ def build_player_stats(
                 last = _norm_name(sp.get("last_name") or "")
                 if last:
                     apif = pl_stats.get(f"__last__{last}") or {}
+
+        # Fixture-level stats (accurate crosses unavailable in API; dispossessed is good)
+        fix: dict = fixture_stats.get(key) or {} if fixture_stats else {}
 
         # starter_rate: fraction of appearances that were starts.
         # From API-Football when available; defaults to 1.0 (assume starter).
@@ -522,6 +540,10 @@ def build_player_stats(
             "apif_rating":     apif.get("rating"),
             "apif_starts":     apif.get("starts"),
             "apif_appearances":apif.get("appearances"),
+            # Fixture-level stats (dispossessed from /fixtures/players; baked into pts_std)
+            "dispossessed":    fix.get("dispossessed"),
+            "dispossessed_pg": round(fix["dispossessed"] / fix["matches"], 2)
+                               if fix.get("matches") else None,
             "projected_pts":   projected_pts,
             "has_stats":       bool(raw),
         }
@@ -881,10 +903,11 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
     teams_lookup = get_sleeper_teams()
 
     # API-Football harvested PL stats — individual per-player data (graceful fallback)
-    pl_stats = load_pl_stats()
+    pl_stats      = load_pl_stats()
+    fixture_stats = load_fixture_stats()
 
     player_data = build_player_stats(
-        players, season_stats, fpl_lookup, understat, teams_lookup, pl_stats
+        players, season_stats, fpl_lookup, understat, teams_lookup, pl_stats, fixture_stats
     )
 
     return {

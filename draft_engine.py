@@ -348,7 +348,7 @@ def load_pl_stats(path: str = "data/pl_stats_2025.json") -> dict[str, dict]:
         if key:
             result[key] = rec
         # Also index by lastname alone as fallback
-        last = _norm_name(rec.get("lastname", ""))
+        last = _norm_name(rec.get("lastname") or "")
         if last and last not in result:
             result[f"__last__{last}"] = rec
     return result

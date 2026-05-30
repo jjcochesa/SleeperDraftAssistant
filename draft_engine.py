@@ -425,7 +425,7 @@ def build_player_stats(
         total_pts = _calc_pts(raw, pos)
         mins      = _raw_stat(raw, "minutes")
         games     = min(38, round(mins / 90)) if mins > 0 else 0
-        ppg       = round(total_pts / games, 2) if games > 0 else 0.0
+        ppg       = round(total_pts / games, 2) if games >= 15 else 0.0
 
         # API-Football individual stats lookup (PL players only)
         apif: dict = {}
@@ -464,8 +464,13 @@ def build_player_stats(
         assists= _raw_stat(raw, "assists")
         sot    = _raw_stat(raw, "shots_on_target")
         kp     = _raw_stat(raw, "key_passes")
-        cs     = _raw_stat(raw, "clean_sheets")
+        drb    = _raw_stat(raw, "successful_dribbles")
+        acnc   = _raw_stat(raw, "accurate_crosses")
+        aer    = _raw_stat(raw, "aerials_won")
         saves  = _raw_stat(raw, "saves")
+        # NOTE: Sleeper's "cos" field shows values >38 for outfield players, so it is NOT
+        # clean sheets count. Removing from display until the correct field code is confirmed.
+        # pts_std (used for total_pts) comes from Sleeper directly so scoring is unaffected.
         tkl    = _raw_stat(raw, "tackles_won")
         ints   = _raw_stat(raw, "interceptions")
         blk    = _raw_stat(raw, "blocked_shots")
@@ -506,17 +511,19 @@ def build_player_stats(
             "games":           games,
             "minutes":         int(mins),
             # Stat breakdown
-            "goals":           int(goals),
-            "assists":         int(assists),
-            "shots_on_target": int(sot),
-            "key_passes":      int(kp),
-            "clean_sheets":    int(cs),
-            "saves":           int(saves),
-            "tackles_won":     int(tkl),
-            "interceptions":   int(ints),
-            "blocked_shots":   int(blk),
-            "yellow_cards":    int(yc),
-            "red_cards":       int(rc),
+            "goals":              int(goals),
+            "assists":            int(assists),
+            "shots_on_target":    int(sot),
+            "key_passes":         int(kp),
+            "dribbles":           int(drb),
+            "accurate_crosses":   int(acnc),
+            "aerials_won":        int(aer),
+            "saves":              int(saves),
+            "tackles_won":        int(tkl),
+            "interceptions":      int(ints),
+            "blocked_shots":      int(blk),
+            "yellow_cards":       int(yc),
+            "red_cards":          int(rc),
             # FPL-sourced (cost + community consensus only — never FPL points/position)
             "cost":            fpl["cost"]          if fpl else None,
             "ownership_pct":   fpl["ownership_pct"] if fpl else None,

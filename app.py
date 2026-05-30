@@ -295,14 +295,15 @@ def _build_rankings_df(
             "_assists":  p["assists"],
             "_sot":      p["shots_on_target"],
             "_kp":       p["key_passes"],
-            "_cs":       p["clean_sheets"],
+            "_drb":      p["dribbles"],
+            "_acnc":     p["accurate_crosses"],
+            "_aer":      p["aerials_won"],
             "_saves":    p["saves"],
             "_tkl":      p["tackles_won"],
             "_int":      p["interceptions"],
             "_blk":      p["blocked_shots"],
             "_yc":       p["yellow_cards"],
             "_rc":       p["red_cards"],
-            "_cost":     p.get("cost"),
             "_own":      p.get("ownership_pct"),
             "_xG90":     p.get("xG90"),
             "_xA90":     p.get("xA90"),
@@ -520,13 +521,14 @@ with tab_ranks:
 
         if show_detail:
             detail_map = {
-                "Goals":    "_goals",  "Assists": "_assists",
-                "SoT":      "_sot",    "KP":      "_kp",
-                "CS":       "_cs",     "Saves":   "_saves",
-                "Tkl":      "_tkl",    "Int":     "_int",
-                "Blk":      "_blk",
-                "YC":       "_yc",     "RC":      "_rc",
-                "FPL Own%": "_own",
+                "Goals":   "_goals",   "Assists": "_assists",
+                "SoT":     "_sot",     "KP":      "_kp",
+                "Drb":     "_drb",     "AcX":     "_acnc",
+                "Aer":     "_aer",     "Saves":   "_saves",
+                "Tkl":     "_tkl",     "Int":     "_int",
+                "Blk":     "_blk",
+                "YC":      "_yc",      "RC":      "_rc",
+                "FPL Own%":"_own",
             }
             if ds.understat_loaded:
                 detail_map |= {"xG": "_xG", "xA": "_xA", "xG90": "_xG90", "xA90": "_xA90"}

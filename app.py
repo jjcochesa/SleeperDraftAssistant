@@ -520,13 +520,13 @@ with tab_ranks:
 
         if show_detail:
             detail_map = {
-                "Goals":   "_goals",  "Assists": "_assists",
-                "SoT":     "_sot",    "KP":      "_kp",
-                "CS":      "_cs",     "Saves":   "_saves",
-                "Tkl":     "_tkl",    "Int":     "_int",
-                "Blk":     "_blk",
-                "YC":      "_yc",     "RC":      "_rc",
-                "Cost £m": "_cost",   "Own%":    "_own",
+                "Goals":    "_goals",  "Assists": "_assists",
+                "SoT":      "_sot",    "KP":      "_kp",
+                "CS":       "_cs",     "Saves":   "_saves",
+                "Tkl":      "_tkl",    "Int":     "_int",
+                "Blk":      "_blk",
+                "YC":       "_yc",     "RC":      "_rc",
+                "FPL Own%": "_own",
             }
             if ds.understat_loaded:
                 detail_map |= {"xG": "_xG", "xA": "_xA", "xG90": "_xG90", "xA90": "_xA90"}
@@ -537,7 +537,7 @@ with tab_ranks:
         df_show = df[show_cols].copy()
         fmt = {"25/26 Pts": "{:.1f}", "PPG": "{:.2f}", "26/27 Proj": "{:.1f}"}
         if show_detail:
-            fmt |= {"Cost £m": "{:.1f}", "Own%": "{:.1f}"}
+            fmt |= {"FPL Own%": "{:.1f}"}
             if ds.understat_loaded:
                 fmt |= {"xG": "{:.2f}", "xA": "{:.2f}", "xG90": "{:.3f}", "xA90": "{:.3f}"}
 
@@ -553,7 +553,12 @@ with tab_ranks:
         if dp_lookup and df_show["DP Rec"].notna().any():
             style = style.background_gradient(subset=["DP Rec"], cmap="YlOrRd_r")
 
-        st.dataframe(style, use_container_width=True, height=min(36 * top_n + 42, 700))
+        st.dataframe(
+            style,
+            column_config={"Name": st.column_config.TextColumn("Name", pinned=True)},
+            use_container_width=True,
+            height=min(36 * top_n + 42, 700),
+        )
 
         if not dp_lookup:
             st.caption("Paste your DP rankings in the sidebar to sort by recommendation.")
@@ -562,8 +567,8 @@ with tab_ranks:
 
     st.caption(
         "**26/27 Proj** = Bayesian-blended PPG (individual + position prior) × 34 GWs  ·  "
-        "min 10 GWs required  ·  **ADP** = ranked by FPL 25/26 ownership % (FPL community proxy, "
-        "reflects FPL scoring — not Sleeper)"
+        "min 10 GWs required  ·  **Draft Pos** = ranked by FPL 25/26 ownership % — "
+        "proxy until Sleeper EPL community ADP is available in August"
     )
 
 
@@ -668,8 +673,7 @@ with tab_adp:
             "Draft Pos":   adp,
             "ADP−Proj":    diff,
             "DP Rec":     dp_rec,
-            "Cost £m":    p.get("cost"),
-            "Own%":       p.get("ownership_pct"),
+            "FPL Own%":   p.get("ownership_pct"),
         }
         if ds.understat_loaded:
             row["xG90"] = p.get("xG90")
@@ -681,7 +685,7 @@ with tab_adp:
 
     fmt_adp = {
         "PPG": "{:.2f}", "25/26 Pts": "{:.1f}",
-        "26/27 Proj": "{:.1f}", "Cost £m": "{:.1f}", "Own%": "{:.1f}",
+        "26/27 Proj": "{:.1f}", "FPL Own%": "{:.1f}",
     }
     if ds.understat_loaded:
         fmt_adp |= {"xG90": "{:.3f}", "xA90": "{:.3f}"}
@@ -694,9 +698,15 @@ with tab_adp:
             subset=["ADP−Proj"], cmap="RdYlGn", vmin=-30, vmax=30
         )
 
-    st.dataframe(style_adp, use_container_width=True, height=650)
+    st.dataframe(
+        style_adp,
+        column_config={"Name": st.column_config.TextColumn("Name", pinned=True)},
+        use_container_width=True,
+        height=650,
+    )
 
     st.caption(
         "⚠️ Draft Pos is last season's Sleeper pick number — not forward-looking 26/27 ADP. "
-        "Use 26/27 Proj rank + DP Rec to build your actual draft order."
+        "**FPL Own%** = FPL 25/26 community ownership, used as a proxy until Sleeper EPL "
+        "community drafts start in August. Use 26/27 Proj rank + DP Rec to build your actual draft order."
     )

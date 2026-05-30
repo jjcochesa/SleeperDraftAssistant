@@ -134,6 +134,7 @@ def fetch_all_players() -> list[dict]:
     page, total_pages = 1, 1
     records = []
 
+    first_entry_dumped = False
     while page <= total_pages:
         print(f"  Page {page}/{total_pages} — {len(records)} players so far...", end="\r")
         data = _get("/players", {"league": LEAGUE_ID, "season": SEASON, "page": page})
@@ -141,6 +142,13 @@ def fetch_all_players() -> list[dict]:
         paging       = data.get("paging", {})
         total_pages  = paging.get("total", 1)
         results      = data.get("response", [])
+
+        # Dump full raw API response for the first player so we can see every field
+        if not first_entry_dumped and results:
+            print(f"\n\n--- RAW API RESPONSE (first player) ---")
+            print(json.dumps(results[0], indent=2))
+            print("--- END RAW ---\n")
+            first_entry_dumped = True
 
         for entry in results:
             rec = _extract(entry.get("player", {}), entry.get("statistics", []))

@@ -27,10 +27,10 @@ import requests
 API_KEY    = os.environ.get("API_FOOTBALL_KEY", "")
 BASE_URL   = "https://v3.football.api-sports.io"
 LEAGUE_ID  = 39      # Premier League
-SEASON     = 2024    # 2024/25 season
+SEASON     = 2025    # 2025/26 season
 OUT_DIR    = Path("data")
-OUT_JSON   = OUT_DIR / "pl_stats_2024.json"
-OUT_CSV    = OUT_DIR / "pl_stats_2024.csv"
+OUT_JSON   = OUT_DIR / "pl_stats_2025.json"
+OUT_CSV    = OUT_DIR / "pl_stats_2025.csv"
 
 if not API_KEY:
     raise SystemExit("Set API_FOOTBALL_KEY env var before running.")

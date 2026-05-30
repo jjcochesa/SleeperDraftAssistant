@@ -58,7 +58,7 @@ def _get(path: str, params: dict) -> dict:
 
 def _extract(player: dict, stats: list) -> dict:
     """Flatten one API-Football player+stats record into a clean dict."""
-    p  = player.get("player", {})
+    p  = player  # already unwrapped at call site
     s  = stats[0] if stats else {}
     gm = s.get("games", {})
     gl = s.get("goals", {})

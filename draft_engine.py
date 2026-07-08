@@ -57,8 +57,8 @@ _SLEEPER_FIELD: dict[str, list[str]] = {
     "assists":              ["at"],
     "shots_on_target":      ["sot"],
     "key_passes":           ["kp"],
-    "successful_dribbles":  ["drb"],
-    "accurate_crosses":     ["ac"],
+    "successful_dribbles":  ["cos"],   # "contests succeeded" — drb is always empty
+    "accurate_crosses":     ["acnc"],  # accurate crosses no corners — ac is always empty
     "aerials_won":          ["aer"],
     "effective_clearances": ["clr"],
     "saves":                ["sv"],

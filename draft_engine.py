@@ -431,7 +431,11 @@ def build_player_stats(
         mins      = _raw_stat(raw, "minutes")
         gp        = _raw_stat(raw, "games_played")
         games     = int(min(38, gp if gp > 0 else (round(mins / 90) if mins > 0 else 0)))
-        ppg       = round(total_pts / games, 2) if games >= 15 else 0.0
+        # Real PPG for any player at/above the projection floor (MIN_GW=10).
+        # Cameo players (<10 games) still show 0 so they don't top the PPG sort,
+        # but 10-14 game players now keep their true PPG in both display and the
+        # projection blend (previously zeroed at <15, which crushed that band).
+        ppg       = round(total_pts / games, 2) if games >= MIN_GW else 0.0
 
         # API-Football individual stats lookup (PL players only)
         apif: dict = {}

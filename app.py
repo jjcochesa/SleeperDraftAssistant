@@ -286,6 +286,7 @@ def _build_rankings_df(
             "Club":      p["team"],
             "25/26 Pts": p["total_pts"],
             "PPG":       p["ppg"],
+            "PP90":      p.get("pp90", 0.0),
             "GW":        p["games"],
             "26/27 Proj":p["projected_pts"],
             "Draft Pos":  p.get("adp_rank"),
@@ -307,6 +308,9 @@ def _build_rankings_df(
             "_blk":      p.get("blocked_shots", 0),
             "_yc":       p.get("yellow_cards", 0),
             "_rc":       p.get("red_cards", 0),
+            "_pen":      p.get("pen_order"),
+            "_crn":      p.get("corner_order"),
+            "_fk":       p.get("fk_order"),
             "_own":      p.get("ownership_pct"),
             "_xG90":     p.get("xG90"),
             "_xA90":     p.get("xA90"),
@@ -492,7 +496,7 @@ with tab_ranks:
     with r_col2:
         sort_mode = st.radio(
             "Sort by",
-            ["26/27 Projected", "25/26 Total Pts", "GW Avg (PPG)"],
+            ["26/27 Projected", "25/26 Total Pts", "GW Avg (PPG)", "Per 90 (PP90)"],
             horizontal=True,
             key="ranks_sort",
         )
@@ -505,6 +509,7 @@ with tab_ranks:
         "26/27 Projected": "26/27 Proj",
         "25/26 Total Pts": "25/26 Pts",
         "GW Avg (PPG)":    "PPG",
+        "Per 90 (PP90)":   "PP90",
     }
     sort_col = sort_col_map[sort_mode]
 
@@ -513,6 +518,7 @@ with tab_ranks:
         "26/27 Projected": "projected_pts",
         "25/26 Total Pts": "total_pts",
         "GW Avg (PPG)":    "ppg",
+        "Per 90 (PP90)":   "pp90",
     }[sort_mode])[:top_n]
 
     if not available:
@@ -520,7 +526,7 @@ with tab_ranks:
     else:
         df = _build_rankings_df(available, sort_col=sort_col)
 
-        show_cols = ["Name", "Pos", "Club", "25/26 Pts", "PPG", "GW", "26/27 Proj", "Draft Pos", "DP Rec"]
+        show_cols = ["Name", "Pos", "Club", "25/26 Pts", "PPG", "PP90", "GW", "26/27 Proj", "Draft Pos", "DP Rec"]
 
         if show_detail:
             detail_map = {
@@ -532,7 +538,8 @@ with tab_ranks:
                 "SM":       "_sm",     "Tkl":      "_tkl",
                 "Int":      "_int",    "Blk":      "_blk",
                 "YC":       "_yc",     "RC":       "_rc",
-                "FPL Own%": "_own",
+                "Pen":      "_pen",    "Crn":      "_crn",
+                "FK":       "_fk",     "FPL Own%": "_own",
             }
             if ds.understat_loaded:
                 detail_map |= {"xG": "_xG", "xA": "_xA", "xG90": "_xG90", "xA90": "_xA90"}
@@ -541,9 +548,9 @@ with tab_ranks:
                 show_cols.append(label)
 
         df_show = df[show_cols].copy()
-        fmt = {"25/26 Pts": "{:.1f}", "PPG": "{:.2f}", "26/27 Proj": "{:.1f}"}
+        fmt = {"25/26 Pts": "{:.1f}", "PPG": "{:.2f}", "PP90": "{:.2f}", "26/27 Proj": "{:.1f}"}
         if show_detail:
-            fmt |= {"FPL Own%": "{:.1f}"}
+            fmt |= {"FPL Own%": "{:.1f}", "Pen": "{:.0f}", "Crn": "{:.0f}", "FK": "{:.0f}"}
             if ds.understat_loaded:
                 fmt |= {"xG": "{:.2f}", "xA": "{:.2f}", "xG90": "{:.3f}", "xA90": "{:.3f}"}
 
@@ -551,6 +558,7 @@ with tab_ranks:
             "26/27 Projected": "26/27 Proj",
             "25/26 Total Pts": "25/26 Pts",
             "GW Avg (PPG)":    "PPG",
+            "Per 90 (PP90)":   "PP90",
         }[sort_mode]
 
         style = df_show.style.format(fmt, na_rep="—").background_gradient(
@@ -572,9 +580,11 @@ with tab_ranks:
             st.warning("Sleeper season stats not loaded — points and projections show 0.")
 
     st.caption(
-        "**26/27 Proj** = Bayesian-blended PPG (individual + position prior) × 34 GWs  ·  "
-        "min 10 GWs required  ·  **Draft Pos** = ranked by FPL 25/26 ownership % — "
-        "proxy until Sleeper EPL community ADP is available in August"
+        "**26/27 Proj** = Bayesian-blended PP90 (points per 90, individual + position prior) "
+        "× expected 90s  ·  min 10 GWs required  ·  **PP90** surfaces high-rate rotation players "
+        "whose PPG is diluted by sub cameos  ·  **Pen/Crn/FK** = FPL set-piece order (1 = first choice)  ·  "
+        "**Draft Pos** = ranked by FPL 25/26 ownership % — proxy until Sleeper EPL community ADP "
+        "is available in August"
     )
 
 

@@ -269,8 +269,10 @@ def get_fpl_bootstrap() -> dict:
 
 def build_fpl_lookup(bootstrap: dict) -> dict[str, dict]:
     """
-    Return {norm_name: {"cost": float, "ownership_pct": float, "team_name": str}}
+    Return {norm_name: {"cost": float, "ownership_pct": float, "team_name": str, …}}
     Keyed by normalised player name for cross-source matching.
+    Set-piece orders (1 = first-choice taker, None = not a taker) are FPL's
+    curated data — free signal for crosses/KP volume (corners) and pen goals.
     """
     team_map = {t["id"]: t["name"] for t in bootstrap.get("teams", [])}
     lookup: dict[str, dict] = {}
@@ -281,6 +283,9 @@ def build_fpl_lookup(bootstrap: dict) -> dict[str, dict]:
             "cost":          round((p.get("now_cost") or 0) / 10, 1),
             "ownership_pct": float(p.get("selected_by_percent") or 0),
             "team_name":     team_map.get(p.get("team"), ""),
+            "pen_order":     p.get("penalties_order"),
+            "corner_order":  p.get("corners_and_indirect_freekicks_order"),
+            "fk_order":      p.get("direct_freekicks_order"),
         }
     return lookup
 
@@ -378,27 +383,29 @@ def build_player_stats(
     MIN_GW_PRIOR = 15     # only use established starters to compute position average
 
     # ------------------------------------------------------------------
-    # Pass 1 — position-average PPG (qualified players only, ≥ MIN_GW)
+    # Pass 1 — position-average PP90 (qualified players only, ≥ MIN_GW_PRIOR)
     # Used as the Bayesian prior so that 1-game wonders collapse toward average.
+    # PP90 (points per 90 min) rather than PPG: sub appearances no longer
+    # dilute a player's rate, so high-rate low-minute players surface.
     # ------------------------------------------------------------------
-    pos_ppg_acc: dict[str, list[float]] = {"GK": [], "DEF": [], "MID": [], "FWD": []}
+    pos_pp90_acc: dict[str, list[float]] = {"GK": [], "DEF": [], "MID": [], "FWD": []}
     for pid, sp in players.items():
         raw = season_stats.get(pid, {})
         if not raw:
             continue
         raw_pos = (sp.get("position") or (sp.get("fantasy_positions") or [""])[0] or "")
         pos     = _norm_pos(raw_pos) if raw_pos else "UNK"
-        if pos not in pos_ppg_acc:
+        if pos not in pos_pp90_acc:
             continue
         pts  = _calc_pts(raw, pos)
         mins = _raw_stat(raw, "minutes")
         gws  = min(38, round(mins / 90)) if mins > 0 else 0
-        if gws >= MIN_GW_PRIOR and pts > 0:
-            pos_ppg_acc[pos].append(pts / gws)
+        if gws >= MIN_GW_PRIOR and pts > 0 and mins > 0:
+            pos_pp90_acc[pos].append(pts / (mins / 90))
 
     pos_avg: dict[str, float] = {
         pos: round(sum(v) / len(v), 3) if v else 8.0
-        for pos, v in pos_ppg_acc.items()
+        for pos, v in pos_pp90_acc.items()
     }
 
     # ------------------------------------------------------------------
@@ -453,19 +460,31 @@ def build_player_stats(
         # From API-Football when available; defaults to 1.0 (assume starter).
         starter_rate = apif.get("starter_rate", 1.0) if apif else 1.0
 
-        # 26/27 projection with Bayesian shrinkage + availability penalty.
-        # Players with < MIN_GW are excluded (projected_pts = 0).
-        # participation_rate = (games/34) × starter_rate, floored at 0.75 for
-        # established starters (≥25gw) with one-off injury seasons (e.g. Saka ACL).
-        if games >= MIN_GW:
-            prior_ppg = pos_avg.get(pos, 8.0)
-            # Adaptive K: full-season veterans (34gw) get ~83% own-PPG weight;
-            # fringe starters (10gw) get ~44%. Prevents over-shrinking regulars.
-            k           = max(3.0, 40.0 / (games ** 0.5))
-            blended_ppg = (games * ppg + k * prior_ppg) / (games + k)
-            raw_rate    = min(1.0, games / 34) * min(1.0, starter_rate)
-            participation_rate = max(0.75, raw_rate) if games >= 25 else raw_rate
-            projected_pts      = round(blended_ppg * 34 * participation_rate, 1)
+        # 26/27 projection: PP90-based Bayesian shrinkage + expected minutes.
+        # PP90 = pts per 90 min. Unlike PPG, a 20-min sub cameo no longer drags
+        # the rate down, so high-rate rotation players are visible. Expected
+        # volume (n90) is projected separately — that's where predicted-lineup
+        # data will plug in as an override.
+        # Players with < MIN_GW games are excluded (projected_pts = 0).
+        n90  = mins / 90.0
+        pp90 = round(total_pts / n90, 2) if n90 > 0 and games >= MIN_GW else 0.0
+        if games >= MIN_GW and n90 > 0:
+            prior_pp90 = pos_avg.get(pos, 8.0)
+            # Adaptive K on 90s played: full-season veterans keep ~83% of their
+            # own rate; 10-90 fringe players get ~44%. Prevents over-shrinking.
+            k            = max(3.0, 40.0 / (n90 ** 0.5))
+            blended_pp90 = (n90 * pp90 + k * prior_pp90) / (n90 + k)
+            # Expected 90s next season = last season's actual volume. Minutes
+            # already embody the player's role (sub/starter), so starter_rate is
+            # NOT multiplied in again — it only gates the injury floor below.
+            # Floor: established starters (≥25gw AND starts-when-available) who
+            # lost minutes to a one-off injury get at least 75% of a 34-GW
+            # season; the guard stops 30-cameo super-subs (high PP90, low
+            # minutes) from being floored up to starter volume.
+            exp_n90 = min(34.0, n90)
+            if games >= 25 and starter_rate >= 0.8:
+                exp_n90 = max(0.75 * 34.0, exp_n90)
+            projected_pts = round(blended_pp90 * exp_n90, 1)
         else:
             projected_pts = 0.0
 
@@ -518,6 +537,7 @@ def build_player_stats(
             # 25/26 Sleeper season totals (pts_std verbatim via _calc_pts)
             "total_pts":       total_pts,
             "ppg":             ppg,
+            "pp90":            pp90,
             "games":           games,
             "minutes":         int(mins),
             # Stat breakdown
@@ -540,6 +560,10 @@ def build_player_stats(
             # FPL-sourced (cost + community consensus only — never FPL points/position)
             "cost":            fpl["cost"]          if fpl else None,
             "ownership_pct":   fpl["ownership_pct"] if fpl else None,
+            # FPL set-piece orders (1 = first choice, None = not a taker)
+            "pen_order":       fpl.get("pen_order")    if fpl else None,
+            "corner_order":    fpl.get("corner_order") if fpl else None,
+            "fk_order":        fpl.get("fk_order")     if fpl else None,
             # Understat
             "xG":              xga.get("xG"),
             "xA":              xga.get("xA"),
@@ -788,14 +812,20 @@ class DraftState:
             "position":        pos,
             "total_pts":       data.get("total_pts", 0.0),
             "ppg":             data.get("ppg", 0.0),
+            "pp90":            data.get("pp90", 0.0),
             "games":           data.get("games", 0),
             "minutes":         data.get("minutes", 0),
             "goals":           data.get("goals", 0),
             "assists":         data.get("assists", 0),
             "shots_on_target": data.get("shots_on_target", 0),
             "key_passes":      data.get("key_passes", 0),
+            "dribbles":        data.get("dribbles", 0),
+            "accurate_crosses":data.get("accurate_crosses", 0),
+            "aerials_won":     data.get("aerials_won", 0),
             "clean_sheets":    data.get("clean_sheets", 0),
             "saves":           data.get("saves", 0),
+            "high_claims":     data.get("high_claims", 0),
+            "smothers":        data.get("smothers", 0),
             "tackles_won":     data.get("tackles_won", 0),
             "interceptions":   data.get("interceptions", 0),
             "blocked_shots":   data.get("blocked_shots", 0),
@@ -803,6 +833,9 @@ class DraftState:
             "red_cards":       data.get("red_cards", 0),
             "cost":            data.get("cost"),
             "ownership_pct":   data.get("ownership_pct"),
+            "pen_order":       data.get("pen_order"),
+            "corner_order":    data.get("corner_order"),
+            "fk_order":        data.get("fk_order"),
             "adp_rank":        data.get("adp_rank"),
             "xG":              data.get("xG"),
             "xA":              data.get("xA"),
@@ -826,7 +859,7 @@ class DraftState:
             if position and p["position"] != position:
                 continue
             out.append(p)
-        key = sort_by if sort_by in ("projected_pts", "ppg", "total_pts") else "projected_pts"
+        key = sort_by if sort_by in ("projected_pts", "ppg", "pp90", "total_pts") else "projected_pts"
         return sorted(out, key=lambda x: x[key], reverse=True)
 
     def get_my_picks(self) -> list[dict]:

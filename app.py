@@ -217,6 +217,10 @@ def _auto_dp_score(p: dict) -> float:
 
 if st.session_state.pop("_trigger_auto_dp", False):
     all_players = list(ds.player_data.values())
+    # Scope to current PL clubs (FPL membership) when FPL loaded, so departed
+    # stars / relegated clubs / placeholders don't pollute the auto rankings.
+    if getattr(ds, "fpl_loaded", False):
+        all_players = [p for p in all_players if p.get("in_pl", True)]
     # Exclude GKs from FWD/MID xG bonus (already handled by pos check)
     ranked = sorted(all_players, key=_auto_dp_score, reverse=True)
     # Top 120 covers 17 rounds × ~7 relevant positions — enough for full draft

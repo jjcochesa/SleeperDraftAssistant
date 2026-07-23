@@ -538,6 +538,20 @@ def build_player_stats(
                     None,
                 )
 
+        team_name = _resolve_team(fpl, sp, teams_lookup)
+
+        # Draftable-pool membership. FPL's bootstrap contains ONLY the 20
+        # current PL clubs, so an FPL match is authoritative proof a player is
+        # in this season's PL — it cleanly drops relegated clubs, foreign
+        # clubs (departed stars like De Bruyne/TAA), Championship squads, and
+        # team-placeholder rows. NOTE: FPL is used for CLUB membership only,
+        # never for position — Sleeper's classification stays authoritative.
+        # Team-placeholder rows ("London Chelsea") embed the club name in the
+        # player name; filter them even if FPL somehow matches.
+        is_placeholder = bool(team_name) and team_name != "—" and \
+            team_name.lower() in full_name.lower()
+        in_pl = (fpl is not None) and not is_placeholder
+
         # Understat xG/xA (name-normalised cross-source match)
         xga: dict = {}
         if understat:
@@ -554,8 +568,9 @@ def build_player_stats(
             "sleeper_id":      pid,
             "name":            full_name,
             "web_name":        sp.get("last_name") or full_name,
-            "team":            _resolve_team(fpl, sp, teams_lookup),
+            "team":            team_name,
             "position":        pos,
+            "in_pl":           in_pl,
             # 25/26 Sleeper season totals (pts_std verbatim via _calc_pts)
             "total_pts":       total_pts,
             "ppg":             ppg,
@@ -833,6 +848,7 @@ class DraftState:
             "web_name":        data.get("web_name") or sp.get("last_name") or full_name,
             "team":            data.get("team")     or sp.get("team", ""),
             "position":        pos,
+            "in_pl":           data.get("in_pl", True),
             "total_pts":       data.get("total_pts", 0.0),
             "ppg":             data.get("ppg", 0.0),
             "pp90":            data.get("pp90", 0.0),
@@ -874,11 +890,16 @@ class DraftState:
 
     def get_available(self, position: Optional[str] = None,
                       sort_by: str = "projected_pts") -> list[dict]:
+        # Scope to the 20 current PL clubs via FPL membership — but only when
+        # FPL actually loaded, else this would empty the whole board.
+        filter_pl = getattr(self, "fpl_loaded", False)
         out = []
         for sid in self.players:
             if sid in self.drafted_ids:
                 continue
             p = self._enrich(sid)
+            if filter_pl and not p.get("in_pl", True):
+                continue
             if position and p["position"] != position:
                 continue
             out.append(p)

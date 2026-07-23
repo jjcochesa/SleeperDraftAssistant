@@ -58,27 +58,33 @@ TARGETS = [
 
 
 def _coeff(league_name: str) -> tuple[float, str]:
-    """League-strength multiplier vs the Premier League (tunable defaults)."""
+    """
+    League-strength multiplier vs the Premier League. Calibrated to public
+    goal-translation / Elo league-equivalency work (top-5 cluster near the PL;
+    Championship/Eredivisie/Portugal ~0.70; lower leagues 0.58-0.65). These are
+    estimates (~±0.05-0.10) — edit freely; the relative tiers matter most.
+    Order matters: specific keys (e.g. "2. bundesliga") before general.
+    """
     n = (league_name or "").lower()
     table = [
-        ("2. bundesliga", 0.50), ("bundesliga 2", 0.50),
-        ("championship",  0.55),
-        ("jupiler",       0.55), ("pro league", 0.55),   # Belgium
-        ("eredivisie",    0.65),
-        ("primeira",      0.60), ("liga portugal", 0.60),
+        ("2. bundesliga", 0.65), ("bundesliga 2", 0.65),
+        ("championship",  0.70),
+        ("eredivisie",    0.70),
+        ("primeira",      0.70), ("liga portugal", 0.70),
+        ("jupiler",       0.63), ("pro league", 0.63),   # Belgium
+        ("super lig",     0.62),                          # Turkey
+        ("bundesliga - austria", 0.58), ("austria", 0.58),
+        ("super league",  0.55),                          # Greece
         ("la liga",       0.90), ("primera",     0.90),
-        ("serie a",       0.85),
-        ("ligue 1",       0.80),
-        ("bundesliga",    0.85),   # (after the "2. bundesliga" checks above)
-        ("super lig",     0.55),   # Turkey
-        ("super league",  0.50),   # Greece
-        ("bundesliga - austria", 0.50), ("austria", 0.50),
+        ("serie a",       0.86),
+        ("ligue 1",       0.82),
+        ("bundesliga",    0.88),   # (after the "2. bundesliga"/"austria" checks)
         ("premier league", 1.00),
     ]
     for key, val in table:
         if key in n:
             return val, key
-    return 0.55, "default"
+    return 0.65, "default"
 
 
 def _get(path: str, params: dict) -> dict:

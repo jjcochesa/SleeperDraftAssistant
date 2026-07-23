@@ -543,8 +543,13 @@ def build_player_stats(
         # Players with < MIN_GW games are excluded (projected_pts = 0).
         NAILED_N90 = 32.0   # near-full 34-GW season for a nailed starter
         n90  = mins / 90.0
-        pp90 = round(total_pts / n90, 2) if n90 > 0 and games >= MIN_GW else 0.0
-        if games >= MIN_GW and n90 > 0:
+        # Nailed starters project even on a sub-MIN_GW sample (e.g. a squad
+        # player promoted to first-choice after a departure): heavy Bayesian
+        # shrinkage keeps a tiny sample from producing a fluke rate. Others
+        # still need MIN_GW games to appear.
+        qualifies = n90 > 0 and (games >= MIN_GW or nailed)
+        pp90 = round(total_pts / n90, 2) if qualifies else 0.0
+        if qualifies:
             prior_pp90 = pos_avg.get(pos, 8.0)
             # Adaptive K on 90s played: full-season veterans keep ~83% of their
             # own rate; 10-90 fringe players get ~44%. Prevents over-shrinking.

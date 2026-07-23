@@ -16,6 +16,7 @@ Buckets:
 Usage:  python3 match_lineups.py      (no API key needed — Sleeper is public)
 """
 
+import difflib
 import json
 import unicodedata
 from pathlib import Path
@@ -81,6 +82,16 @@ print("=== NEW / foreign-lookup targets (matched a pool player, 0 min last seaso
 for tag, _ in sorted(new_targets):
     print(f"  {tag}")
 
-print("\n=== UNMATCHED — no pool player matched (spelling to fix) ===")
+print("\n=== UNMATCHED — no pool player matched (spelling to fix, or not in pool) ===")
+pool_norm = [(fn, norm(fn)) for _, fn, _ in pool]
 for team, name in sorted(unmatched, key=lambda x: x[0]):
-    print(f"  {name:20s} {team}")
+    q = norm(name)
+    qlast = q.split()[-1]
+    # substring hits (query appears inside a pool name) + fuzzy on last token
+    subs = [fn for fn, nn in pool_norm if q in nn or qlast in nn.split()]
+    fuzzy = difflib.get_close_matches(qlast, [nn.split()[-1] for _, nn in pool_norm],
+                                      n=3, cutoff=0.7)
+    fuzzy_names = [fn for fn, nn in pool_norm if nn.split()[-1] in fuzzy]
+    sugg = list(dict.fromkeys(subs + fuzzy_names))[:4]
+    hint = ("  ~ " + " | ".join(sugg)) if sugg else "  (no close pool name — likely not in Sleeper yet)"
+    print(f"  {name:20s} {team:18s}{hint}")

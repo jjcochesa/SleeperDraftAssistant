@@ -34,9 +34,20 @@ BASE_URL = "https://v3.football.api-sports.io"
 SEASON   = 2025          # 2025/26 — each player's last season before the PL move
 OUT_PATH = Path("data/new_signings_2026.json")
 
-# Competitions to ignore when picking a player's primary season (youth / intl).
-_SKIP_COMP = re.compile(r"u1[5-9]|u2[0-3]|youth|uefa|world|friendl|qualification|"
-                        r"nations|olympic|reserve", re.I)
+# Non-domestic-league competitions to ignore (API-Football per-player stats have
+# no reliable "type" field, so we filter by NAME). "Championship" stays a league.
+_SKIP_WORDS = (
+    "u16", "u17", "u18", "u19", "u20", "u21", "u23", "youth", "uefa",
+    "champions league", "europa", "conference league", "nations", "world cup",
+    "euro championship", "friendl", "qualification", "olympic", "revello",
+    "cup", "coppa", "copa", "taca", "taça", "pokal", "coupe", "dfb",
+    "relegation", "super cup", "supercup", "play-off", "playoff", "reserve",
+)
+
+
+def _is_cup(name: str) -> bool:
+    n = (name or "").lower()
+    return any(w in n for w in _SKIP_WORDS)
 
 if not API_KEY:
     raise SystemExit("Set API_FOOTBALL_KEY env var before running.")
@@ -153,13 +164,12 @@ def primary_stats(pid: int) -> tuple:
             continue
         stats_list = resp[0].get("statistics", []) or []
         last_all = stats_list
-        # Domestic LEAGUE entries only (excludes cups/youth/intl) — so a player
-        # with only cup minutes this season falls back to last season's league
-        # (e.g. Leoni: 81' League Cup 25/26 -> Parma Serie A 24/25).
+        # Domestic-league entries only (exclude cups/youth/intl by name) — so a
+        # player with only cup minutes this season falls back to last season's
+        # league (e.g. Leoni: 81' League Cup 25/26 -> Parma Serie A 24/25).
         league = [
             s for s in stats_list
-            if (s.get("league") or {}).get("type") == "League"
-            and not _SKIP_COMP.search((s.get("league") or {}).get("name", ""))
+            if not _is_cup((s.get("league") or {}).get("name", ""))
             and ((s.get("games") or {}).get("minutes") or 0) >= 270   # ≥3 full games
         ]
         if league:

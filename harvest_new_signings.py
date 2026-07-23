@@ -44,22 +44,26 @@ if not API_KEY:
 session = requests.Session()
 session.headers.update({"x-apisports-key": API_KEY, "Accept": "application/json"})
 
-# (display name, lastname to search, firstname hint, nationality hint)
+# Well-known API-Football league IDs, for scoping stubborn name searches.
+LG_LIGUE1, LG_PRIMEIRA = 61, 94
+
+# (display, lastname search, firstname hint, nationality hint, (league_id, season)
+# league_hint scopes the search to a specific league to beat name collisions.)
 TARGETS = [
-    ("Bazoumana Toure",  "Toure",       "Bazoumana", ""),
-    ("Hayden Hackney",   "Hackney",     "Hayden",    "England"),
-    ("Jeremy Jacquet",   "Jacquet",     "Jeremy",    "France"),
-    ("Giovanni Leoni",   "Leoni",       "Giovanni",  "Italy"),
-    ("Johan Manzambi",   "Manzambi",    "Johan",     ""),
-    ("Oscar Mingueza",   "Mingueza",    "Oscar",     "Spain"),
-    ("Tarik Muharemovic","Muharemovic", "Tarik",     ""),
-    ("Marco Palestra",   "Palestra",    "Marco",     "Italy"),
-    ("Geovany Quenda",   "Quenda",      "Geovany",   "Portugal"),
-    ("Jannik Schuster",  "Schuster",    "Jannik",    ""),
-    ("Luka Vuskovic",    "Vuskovic",    "Luka",      "Croatia"),
-    ("Antonio Silva",    "Silva",       "Antonio",   "Portugal"),   # Benfica CB
-    ("Ousmane Diomande", "Diomande",    "Ousmane",   ""),
-    ("Christos Tzolis",  "Tzolis",      "Christos",  "Greece"),
+    ("Bazoumana Toure",  "Toure",       "Bazoumana", "",         None),
+    ("Hayden Hackney",   "Hackney",     "Hayden",    "England",  None),
+    ("Jeremy Jacquet",   "Jacquet",     "Jeremy",    "France",   (LG_LIGUE1, 2025)),
+    ("Giovanni Leoni",   "Leoni",       "Giovanni",  "Italy",    None),
+    ("Johan Manzambi",   "Manzambi",    "Johan",     "",         None),
+    ("Oscar Mingueza",   "Mingueza",    "Oscar",     "Spain",    None),
+    ("Tarik Muharemovic","Muharemovic", "Tarik",     "",         None),
+    ("Marco Palestra",   "Palestra",    "Marco",     "Italy",    None),
+    ("Geovany Quenda",   "Quenda",      "Geovany",   "Portugal", None),
+    ("Jannik Schuster",  "Schuster",    "Jannik",    "",         None),
+    ("Luka Vuskovic",    "Vuskovic",    "Luka",      "Croatia",  None),
+    ("Antonio Silva",    "Silva",       "Antonio",   "Portugal", (LG_PRIMEIRA, 2025)),  # Benfica
+    ("Ousmane Diomande", "Diomande",    "Ousmane",   "",         None),
+    ("Christos Tzolis",  "Tzolis",      "Christos",  "Greece",   None),
 ]
 
 
@@ -103,14 +107,10 @@ def _get(path: str, params: dict) -> dict:
 PID_OVERRIDE: dict[str, int] = {}
 
 
-def find_player(display: str, search: str, hint: str, nat: str) -> tuple:
+def find_player(display: str, search: str, hint: str, nat: str, league_hint) -> tuple:
     ov = PID_OVERRIDE.get(_norm_name(display))
     if ov:
         return ov, display, 1
-    data = _get("/players/profiles", {"search": search})
-    resp = data.get("response", []) or []
-    if not resp:
-        return None, None, 0
     target = _norm_name(display)
 
     def score(r):
@@ -123,6 +123,20 @@ def find_player(display: str, search: str, hint: str, nat: str) -> tuple:
             s += 0.25
         return s
 
+    # League-scoped search first (beats same-name players in other divisions).
+    if league_hint:
+        lid, seas = league_hint
+        data = _get("/players", {"search": search, "league": lid, "season": seas})
+        resp = data.get("response", []) or []
+        if resp:
+            best = max(resp, key=score)
+            p = best.get("player", {})
+            return p.get("id"), p.get("name"), len(resp)
+
+    data = _get("/players/profiles", {"search": search})
+    resp = data.get("response", []) or []
+    if not resp:
+        return None, None, 0
     best = max(resp, key=score)
     p = best.get("player", {})
     return p.get("id"), p.get("name"), len(resp)
@@ -183,9 +197,9 @@ def per90(s: dict, n90: float) -> dict:
 
 out: dict = {}
 print(f"Harvesting {len(TARGETS)} new signings (prior season {SEASON}/{SEASON+1})...\n")
-for display, search, hint, nat in TARGETS:
+for display, search, hint, nat, league_hint in TARGETS:
     try:
-        pid, api_name, ncand = find_player(display, search, hint, nat)
+        pid, api_name, ncand = find_player(display, search, hint, nat, league_hint)
         if not pid:
             print(f"  {display:22s} — NOT FOUND (0 candidates for '{search}')")
             continue

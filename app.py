@@ -231,7 +231,12 @@ st.session_state["dp_lookup"]    = dp_lookup
 
 # Sidebar status
 with ds_status_slot.container():
-    stats_icon = "✅" if ds.stats_loaded     else ("⚠️" if ds.stats_error     else "—")
+    base_season = getattr(ds, "stats_season", None)
+    season_lbl  = ""
+    if base_season:
+        yr = int(base_season)
+        season_lbl = f" ({yr % 100}/{(yr + 1) % 100})"
+    stats_icon = f"✅{season_lbl}" if ds.stats_loaded else ("⚠️" if ds.stats_error else "—")
     fpl_icon   = "✅" if ds.fpl_loaded       else "⚠️"
     us_icon    = "✅" if ds.understat_loaded else ("⚠️" if ds.understat_error else "—")
     dp_icon    = f"✅ {len(dp_lookup)}"      if dp_lookup                      else "—"

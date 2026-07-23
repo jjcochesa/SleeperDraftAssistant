@@ -252,6 +252,28 @@ def get_sleeper_season_stats(season: Optional[str] = None) -> dict:
     return _get(f"{SLEEPER_API}/stats/{SLEEPER_SPORT}/regular/{yr}")
 
 
+def get_projection_base_stats(min_players: int = 50) -> tuple[dict, str]:
+    """
+    Return the most recent season stats that actually contain data, plus the
+    season year used. Sleeper's current-season endpoint is empty until games
+    are played, so from Aug (season year flips) until 26/27 has real minutes,
+    this transparently falls back to the last completed season (25/26) — which
+    is the correct historical base for projections. Auto-advances to the new
+    season once it accumulates ≥ min_players players with minutes.
+    """
+    current = _sleeper_season_year()
+    for yr in (current, current - 1):
+        try:
+            stats = get_sleeper_season_stats(str(yr))
+        except Exception:
+            continue
+        with_mins = sum(1 for s in stats.values() if s.get("min"))
+        if with_mins >= min_players:
+            return stats, str(yr)
+    # Nothing usable — return current-season (possibly empty) so caller degrades
+    return get_sleeper_season_stats(str(current)), str(current)
+
+
 # ---------------------------------------------------------------------------
 # FPL API — cost and ownership ONLY (never use FPL points or position)
 # ---------------------------------------------------------------------------
@@ -729,6 +751,7 @@ class DraftState:
         self.player_data      = db.get("player_data", {})
         self.stats_loaded     = db.get("stats_loaded", False)
         self.stats_error      = db.get("stats_error")
+        self.stats_season     = db.get("stats_season")
         self.fpl_loaded       = db.get("fpl_loaded", False)
         self.understat_loaded = db.get("understat_loaded", False)
         self.understat_error  = db.get("understat_error")
@@ -928,8 +951,11 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
     season_stats: dict = {}
     stats_loaded  = False
     stats_error:  Optional[str] = None
+    stats_season  = season
     try:
-        season_stats = get_sleeper_season_stats(season)
+        # Use the most recent season with real data as the projection base.
+        # Keeps 25/26 as the base through the summer until 26/27 has minutes.
+        season_stats, stats_season = get_projection_base_stats()
         stats_loaded = True
     except Exception as exc:
         stats_error = str(exc)
@@ -968,6 +994,7 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
         "player_data":      player_data,
         "stats_loaded":     stats_loaded,
         "stats_error":      stats_error,
+        "stats_season":     stats_season,
         "fpl_loaded":       fpl_loaded,
         "understat_loaded": understat_loaded,
         "understat_error":  understat_error,

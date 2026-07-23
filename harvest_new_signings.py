@@ -97,7 +97,16 @@ def _get(path: str, params: dict) -> dict:
     return r.json()
 
 
+# Manual API-Football player-id overrides for names too common to auto-resolve
+# (multiple same-name players). Fill in from the API-Football site if a stubborn
+# namesake keeps winning, e.g. {"antonio silva": 283058}.
+PID_OVERRIDE: dict[str, int] = {}
+
+
 def find_player(display: str, search: str, hint: str, nat: str) -> tuple:
+    ov = PID_OVERRIDE.get(_norm_name(display))
+    if ov:
+        return ov, display, 1
     data = _get("/players/profiles", {"search": search})
     resp = data.get("response", []) or []
     if not resp:
@@ -130,17 +139,17 @@ def primary_stats(pid: int) -> tuple:
             continue
         stats_list = resp[0].get("statistics", []) or []
         last_all = stats_list
+        # Domestic LEAGUE entries only (excludes cups/youth/intl) — so a player
+        # with only cup minutes this season falls back to last season's league
+        # (e.g. Leoni: 81' League Cup 25/26 -> Parma Serie A 24/25).
         league = [
             s for s in stats_list
             if (s.get("league") or {}).get("type") == "League"
             and not _SKIP_COMP.search((s.get("league") or {}).get("name", ""))
-            and ((s.get("games") or {}).get("minutes") or 0) > 0
+            and ((s.get("games") or {}).get("minutes") or 0) >= 270   # ≥3 full games
         ]
-        pool = league or [s for s in stats_list
-                          if ((s.get("games") or {}).get("minutes") or 0) > 0
-                          and not _SKIP_COMP.search((s.get("league") or {}).get("name", ""))]
-        if pool:
-            best = max(pool, key=lambda s: (s.get("games") or {}).get("minutes") or 0)
+        if league:
+            best = max(league, key=lambda s: (s.get("games") or {}).get("minutes") or 0)
             return best, season, stats_list
         time.sleep(0.15)
     return None, None, last_all

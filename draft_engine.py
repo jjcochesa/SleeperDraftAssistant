@@ -683,7 +683,7 @@ def build_player_stats(
                         ns = next((v for k, v in new_signings.items() if k.endswith(last)), {})
             if nailed and ns.get("per90"):
                 est_pp90 = _est_flat_pts(ns["per90"], pos)
-                pp90 = round(est_pp90 * calib.get(pos, 1.0) * ns.get("coeff", 0.65), 2)
+                pp90 = max(0.0, round(est_pp90 * calib.get(pos, 1.0) * ns.get("coeff", 0.65), 2))
                 projected_pts = round(pp90 * NAILED_N90, 1)
             else:
                 projected_pts = 0.0

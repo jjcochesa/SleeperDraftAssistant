@@ -290,6 +290,7 @@ def _build_rankings_df(
         norm   = _norm_name(p["name"])
         dp_rec = dp_lookup.get(norm)
         rows.append({
+            "★":         "★" if p.get("nailed") else "",
             "Name":      p["name"],
             "Pos":       p["position"],
             "Club":      p["team"],
@@ -535,7 +536,7 @@ with tab_ranks:
     else:
         df = _build_rankings_df(available, sort_col=sort_col)
 
-        show_cols = ["Name", "Pos", "Club", "25/26 Pts", "PPG", "PP90", "GW", "26/27 Proj", "Draft Pos", "DP Rec"]
+        show_cols = ["★", "Name", "Pos", "Club", "25/26 Pts", "PPG", "PP90", "GW", "26/27 Proj", "Draft Pos", "DP Rec"]
 
         if show_detail:
             detail_map = {
@@ -589,11 +590,12 @@ with tab_ranks:
             st.warning("Sleeper season stats not loaded — points and projections show 0.")
 
     st.caption(
-        "**26/27 Proj** = Bayesian-blended PP90 (points per 90, individual + position prior) "
-        "× expected 90s  ·  min 10 GWs required  ·  **PP90** surfaces high-rate rotation players "
-        "whose PPG is diluted by sub cameos  ·  **Pen/Crn/FK** = FPL set-piece order (1 = first choice)  ·  "
-        "**Draft Pos** = ranked by FPL 25/26 ownership % — proxy until Sleeper EPL community ADP "
-        "is available in August"
+        "**★** = nailed starter (in 26/27 predicted lineups) → projected over a near-full season, "
+        "which surfaces returning players whose 25/26 minutes were suppressed by injury/rotation  ·  "
+        "**26/27 Proj** = Bayesian-blended PP90 (points per 90, individual + position prior) × expected 90s  ·  "
+        "min 10 GWs required  ·  **PP90** surfaces high-rate rotation players whose PPG is diluted by sub cameos  ·  "
+        "**Pen/Crn/FK** = FPL set-piece order (1 = first choice)  ·  **Draft Pos** = ranked by FPL 25/26 "
+        "ownership % — proxy until Sleeper EPL community ADP is available in August"
     )
 
 

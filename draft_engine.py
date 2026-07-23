@@ -116,13 +116,20 @@ _SLEEPER_NUMERIC_TEAMS: dict[str, str] = {
 # Utilities
 # ---------------------------------------------------------------------------
 
+# Chars with no NFKD decomposition — map explicitly before accent-stripping.
+_NAME_SUB = {"ı": "i", "İ": "i", "ø": "o", "ß": "ss", "đ": "d",
+             "ð": "d", "ł": "l", "æ": "ae", "œ": "oe", "þ": "th"}
+
+
 def _norm_name(name: str) -> str:
     """
     Accent-strip + lowercase for cross-source name matching.
-    Turkish dotless-ı (U+0131) has no NFKD decomposition — replaced explicitly.
+    Non-decomposing chars (Turkish ı, Nordic ø, German ß, …) are mapped first.
     """
-    name = name.replace("ı", "i").replace("İ", "i")
-    nfkd = unicodedata.normalize("NFKD", name.lower().strip())
+    name = name.lower().strip()
+    for a, b in _NAME_SUB.items():
+        name = name.replace(a, b)
+    nfkd = unicodedata.normalize("NFKD", name)
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
@@ -349,6 +356,48 @@ def _calc_pts(raw: dict, position: str) -> float:
 # Player data builder
 # ---------------------------------------------------------------------------
 
+def load_lineups(path: str = "data/lineups_2026.json") -> dict[str, list]:
+    """Load 26/27 nailed-starter lineups {club: [names]}. Empty if file missing."""
+    import json
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return {}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+def resolve_nailed_starters(players: dict, season_stats: dict,
+                            lineups: dict) -> set:
+    """
+    Resolve lineup names to Sleeper player_ids. A lineup name matches a pool
+    player when every token of the (normalised) name is in the pool player's
+    name tokens (handles multi-word surnames + mononyms); ties broken by most
+    25/26 minutes (the established starter). Returns the set of nailed pids.
+    """
+    if not lineups:
+        return set()
+    pool = []
+    for pid, sp in players.items():
+        fn = (sp.get("full_name") or sp.get("name")
+              or " ".join(filter(None, [sp.get("first_name"), sp.get("last_name")])) or "")
+        pool.append((pid, set(_norm_name(fn).split())))
+
+    def mins(pid: str) -> float:
+        return float((season_stats.get(pid) or {}).get("min") or 0)
+
+    nailed: set = set()
+    for _club, names in lineups.items():
+        for name in names:
+            nt = set(_norm_name(name).split())
+            if not nt:
+                continue
+            cands = [pid for pid, pt in pool if nt <= pt]
+            if cands:
+                nailed.add(max(cands, key=mins))
+    return nailed
+
+
 def load_fixture_stats(path: str = "data/pl_fixture_stats_2025.json") -> dict[str, dict]:
     """
     Load harvested fixture-level stats (dispossessed, crosses, saves).
@@ -394,6 +443,7 @@ def build_player_stats(
     teams_lookup:   Optional[dict] = None,
     pl_stats:       Optional[dict] = None,
     fixture_stats:  Optional[dict] = None,
+    nailed_pids:    Optional[set] = None,
 ) -> dict[str, dict]:
     """
     Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA,
@@ -482,12 +532,16 @@ def build_player_stats(
         # From API-Football when available; defaults to 1.0 (assume starter).
         starter_rate = apif.get("starter_rate", 1.0) if apif else 1.0
 
+        # Nailed starter = named in the 26/27 predicted lineups (manual override).
+        nailed = bool(nailed_pids and pid in nailed_pids)
+
         # 26/27 projection: PP90-based Bayesian shrinkage + expected minutes.
         # PP90 = pts per 90 min. Unlike PPG, a 20-min sub cameo no longer drags
         # the rate down, so high-rate rotation players are visible. Expected
-        # volume (n90) is projected separately — that's where predicted-lineup
-        # data will plug in as an override.
+        # volume (n90) is projected separately — the predicted-lineup override
+        # plugs in here.
         # Players with < MIN_GW games are excluded (projected_pts = 0).
+        NAILED_N90 = 32.0   # near-full 34-GW season for a nailed starter
         n90  = mins / 90.0
         pp90 = round(total_pts / n90, 2) if n90 > 0 and games >= MIN_GW else 0.0
         if games >= MIN_GW and n90 > 0:
@@ -496,15 +550,15 @@ def build_player_stats(
             # own rate; 10-90 fringe players get ~44%. Prevents over-shrinking.
             k            = max(3.0, 40.0 / (n90 ** 0.5))
             blended_pp90 = (n90 * pp90 + k * prior_pp90) / (n90 + k)
-            # Expected 90s next season = last season's actual volume. Minutes
-            # already embody the player's role (sub/starter), so starter_rate is
-            # NOT multiplied in again — it only gates the injury floor below.
-            # Floor: established starters (≥25gw AND starts-when-available) who
-            # lost minutes to a one-off injury get at least 75% of a 34-GW
-            # season; the guard stops 30-cameo super-subs (high PP90, low
-            # minutes) from being floored up to starter volume.
+            # Expected 90s next season. Lineup nailed-starters are lifted to a
+            # near-full season (this is what surfaces a returning player who was
+            # injured/rotated in 25/26 but is now first-choice — the hidden gem).
+            # Otherwise use last season's actual volume, with the established-
+            # starter injury floor (≥25gw AND starts-when-available).
             exp_n90 = min(34.0, n90)
-            if games >= 25 and starter_rate >= 0.8:
+            if nailed:
+                exp_n90 = max(exp_n90, NAILED_N90)
+            elif games >= 25 and starter_rate >= 0.8:
                 exp_n90 = max(0.75 * 34.0, exp_n90)
             projected_pts = round(blended_pp90 * exp_n90, 1)
         else:
@@ -550,7 +604,9 @@ def build_player_stats(
         # player name; filter them even if FPL somehow matches.
         is_placeholder = bool(team_name) and team_name != "—" and \
             team_name.lower() in full_name.lower()
-        in_pl = (fpl is not None) and not is_placeholder
+        # A nailed starter (named in the lineups) is always in the pool, even if
+        # FPL hasn't added them yet (new signings) — the user curated the list.
+        in_pl = (nailed or fpl is not None) and not is_placeholder
 
         # Understat xG/xA (name-normalised cross-source match)
         xga: dict = {}
@@ -571,6 +627,7 @@ def build_player_stats(
             "team":            team_name,
             "position":        pos,
             "in_pl":           in_pl,
+            "nailed":          nailed,
             # 25/26 Sleeper season totals (pts_std verbatim via _calc_pts)
             "total_pts":       total_pts,
             "ppg":             ppg,
@@ -849,6 +906,7 @@ class DraftState:
             "team":            data.get("team")     or sp.get("team", ""),
             "position":        pos,
             "in_pl":           data.get("in_pl", True),
+            "nailed":          data.get("nailed", False),
             "total_pts":       data.get("total_pts", 0.0),
             "ppg":             data.get("ppg", 0.0),
             "pp90":            data.get("pp90", 0.0),
@@ -1006,8 +1064,13 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
     pl_stats      = load_pl_stats()
     fixture_stats = load_fixture_stats()
 
+    # 26/27 predicted lineups → nailed-starter expected-minutes override
+    lineups     = load_lineups()
+    nailed_pids = resolve_nailed_starters(players, season_stats, lineups)
+
     player_data = build_player_stats(
-        players, season_stats, fpl_lookup, understat, teams_lookup, pl_stats, fixture_stats
+        players, season_stats, fpl_lookup, understat, teams_lookup,
+        pl_stats, fixture_stats, nailed_pids
     )
 
     return {

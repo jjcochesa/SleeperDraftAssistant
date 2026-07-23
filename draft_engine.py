@@ -356,6 +356,74 @@ def _calc_pts(raw: dict, position: str) -> float:
 # Player data builder
 # ---------------------------------------------------------------------------
 
+# Stats estimable from API-Football (both harvested PL data and foreign new
+# signings). Missing here: clean sheets, accurate crosses, aerials, defcon
+# extras — so this UNDERCOUNTS. A calibration factor, fit on PL players where
+# we ALSO know the true Sleeper pts_std, rescales the estimate onto the real
+# points scale; a league coefficient then discounts for league strength.
+def _est_flat_pts(f: dict, pos: str) -> float:
+    """Estimated Sleeper points from a flat counting-stat dict at a position."""
+    pts = 0.0
+    for stat, val in f.items():
+        if not val:
+            continue
+        rule = SLEEPER_SCORING.get(stat)
+        if rule is None:
+            continue
+        mult = rule.get(pos, 0) if isinstance(rule, dict) else float(rule)
+        pts += val * mult
+    return pts
+
+
+def _apif_flat(apif: dict) -> dict:
+    """Map harvested API-Football PL fields (pl_stats) to the estimator keys."""
+    return {
+        "goals":               apif.get("goals")            or 0,
+        "assists":             apif.get("assists")          or 0,
+        "shots_on_target":     apif.get("shots_on_target")  or 0,
+        "key_passes":          apif.get("key_passes")       or 0,
+        "successful_dribbles": apif.get("dribbles_success") or 0,
+        "tackles_won":        (apif.get("tackles_total")    or 0) * 0.6,
+        "interceptions":       apif.get("interceptions")    or 0,
+        "blocked_shots":       apif.get("tackles_blocks")   or 0,
+        "yellow_card":         apif.get("yellow_cards")     or 0,
+        "red_card":            apif.get("red_cards")        or 0,
+        "penalties_missed":    apif.get("penalties_missed") or 0,
+        "saves":               apif.get("saves")            or 0,
+        "goals_against":       apif.get("goals_conceded")   or 0,
+    }
+
+
+def load_new_signings(path: str = "data/new_signings_2026.json") -> dict[str, dict]:
+    """Load harvested foreign-league per-90 stats for new signings. {norm_name: {...}}."""
+    import json
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return {}
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+def _match_apif(sp: dict, key: str, pl_stats: Optional[dict]) -> dict:
+    """Match a Sleeper player to harvested API-Football PL data by name."""
+    if not pl_stats:
+        return {}
+    apif = pl_stats.get(key) or {}
+    if not apif:
+        last = _norm_name(sp.get("last_name") or "")
+        if last:
+            apif = pl_stats.get(f"__last__{last}") or {}
+    return apif
+
+
+def _median(vals: list) -> float:
+    if not vals:
+        return 1.0
+    s = sorted(vals)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
 def load_lineups(path: str = "data/lineups_2026.json") -> dict[str, list]:
     """Load 26/27 nailed-starter lineups {club: [names]}. Empty if file missing."""
     import json
@@ -444,6 +512,7 @@ def build_player_stats(
     pl_stats:       Optional[dict] = None,
     fixture_stats:  Optional[dict] = None,
     nailed_pids:    Optional[set] = None,
+    new_signings:   Optional[dict] = None,
 ) -> dict[str, dict]:
     """
     Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA,
@@ -478,6 +547,41 @@ def build_player_stats(
     pos_avg: dict[str, float] = {
         pos: round(sum(v) / len(v), 3) if v else 8.0
         for pos, v in pos_pp90_acc.items()
+    }
+
+    # ------------------------------------------------------------------
+    # Calibration — put the API-Football estimate on the real Sleeper scale.
+    # For PL players we have BOTH the API-Football stat line AND the true
+    # pts_std. The estimator undercounts (no CS/crosses/aerials) yet weak-league
+    # counting stats can inflate, so per position we fit calib = median(real
+    # pp90 / estimated pp90). New signings' foreign estimates are then multiplied
+    # by calib (scale fix) and their league coefficient (strength discount).
+    # ------------------------------------------------------------------
+    calib_ratios: dict[str, list[float]] = {"GK": [], "DEF": [], "MID": [], "FWD": []}
+    if pl_stats:
+        for pid, sp in players.items():
+            raw = season_stats.get(pid, {})
+            if not raw:
+                continue
+            raw_pos = (sp.get("position") or (sp.get("fantasy_positions") or [""])[0] or "")
+            pos     = _norm_pos(raw_pos) if raw_pos else "UNK"
+            if pos not in calib_ratios:
+                continue
+            mins = _raw_stat(raw, "minutes")
+            if mins < 900:                      # ≥10 full games for a stable ratio
+                continue
+            fn = (sp.get("full_name") or sp.get("name")
+                  or " ".join(filter(None, [sp.get("first_name"), sp.get("last_name")])) or pid)
+            apif = _match_apif(sp, _norm_name(fn), pl_stats)
+            am = apif.get("minutes") or 0
+            if not apif or am < 900:
+                continue
+            est_pp90 = _est_flat_pts(_apif_flat(apif), pos) / (am / 90)
+            real_pp90 = _calc_pts(raw, pos) / (mins / 90)
+            if est_pp90 > 0 and real_pp90 > 0:
+                calib_ratios[pos].append(real_pp90 / est_pp90)
+    calib: dict[str, float] = {
+        pos: round(_median(v), 3) if v else 1.0 for pos, v in calib_ratios.items()
     }
 
     # ------------------------------------------------------------------
@@ -567,7 +671,22 @@ def build_player_stats(
                 exp_n90 = max(0.75 * 34.0, exp_n90)
             projected_pts = round(blended_pp90 * exp_n90, 1)
         else:
-            projected_pts = 0.0
+            # Nailed new signing with no PL minutes: derive a rate from their
+            # harvested foreign per-90 stats, put it on the Sleeper scale
+            # (calib) and discount for league strength (coeff).
+            ns = {}
+            if new_signings:
+                ns = new_signings.get(key) or {}
+                if not ns:
+                    last = _norm_name(sp.get("last_name") or "")
+                    if last:
+                        ns = next((v for k, v in new_signings.items() if k.endswith(last)), {})
+            if nailed and ns.get("per90"):
+                est_pp90 = _est_flat_pts(ns["per90"], pos)
+                pp90 = round(est_pp90 * calib.get(pos, 1.0) * ns.get("coeff", 0.65), 2)
+                projected_pts = round(pp90 * NAILED_N90, 1)
+            else:
+                projected_pts = 0.0
 
         # Raw stats (field codes confirmed from official Sleeper stat table)
         goals  = _raw_stat(raw, "goals")
@@ -1073,9 +1192,12 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
     lineups     = load_lineups()
     nailed_pids = resolve_nailed_starters(players, season_stats, lineups)
 
+    # Foreign per-90 stats for new signings (coefficient-adjusted projections)
+    new_signings = load_new_signings()
+
     player_data = build_player_stats(
         players, season_stats, fpl_lookup, understat, teams_lookup,
-        pl_stats, fixture_stats, nailed_pids
+        pl_stats, fixture_stats, nailed_pids, new_signings
     )
 
     return {

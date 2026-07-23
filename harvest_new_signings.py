@@ -44,40 +44,45 @@ if not API_KEY:
 session = requests.Session()
 session.headers.update({"x-apisports-key": API_KEY, "Accept": "application/json"})
 
-# (display name, lastname to search, firstname hint)
+# (display name, lastname to search, firstname hint, nationality hint)
 TARGETS = [
-    ("Bazoumana Toure",  "Toure",       "Bazoumana"),
-    ("Hayden Hackney",   "Hackney",     "Hayden"),
-    ("Jeremy Jacquet",   "Jacquet",     "Jeremy"),
-    ("Giovanni Leoni",   "Leoni",       "Giovanni"),
-    ("Johan Manzambi",   "Manzambi",    "Johan"),
-    ("Oscar Mingueza",   "Mingueza",    "Oscar"),
-    ("Tarik Muharemovic","Muharemovic", "Tarik"),
-    ("Marco Palestra",   "Palestra",    "Marco"),
-    ("Geovany Quenda",   "Quenda",      "Geovany"),
-    ("Jannik Schuster",  "Schuster",    "Jannik"),
-    ("Luka Vuskovic",    "Vuskovic",    "Luka"),
-    ("Antonio Silva",    "Silva",       "Antonio"),   # Benfica CB
-    ("Ousmane Diomande", "Diomande",    "Ousmane"),
-    ("Christos Tzolis",  "Tzolis",      "Christos"),
+    ("Bazoumana Toure",  "Toure",       "Bazoumana", ""),
+    ("Hayden Hackney",   "Hackney",     "Hayden",    "England"),
+    ("Jeremy Jacquet",   "Jacquet",     "Jeremy",    "France"),
+    ("Giovanni Leoni",   "Leoni",       "Giovanni",  "Italy"),
+    ("Johan Manzambi",   "Manzambi",    "Johan",     ""),
+    ("Oscar Mingueza",   "Mingueza",    "Oscar",     "Spain"),
+    ("Tarik Muharemovic","Muharemovic", "Tarik",     ""),
+    ("Marco Palestra",   "Palestra",    "Marco",     "Italy"),
+    ("Geovany Quenda",   "Quenda",      "Geovany",   "Portugal"),
+    ("Jannik Schuster",  "Schuster",    "Jannik",    ""),
+    ("Luka Vuskovic",    "Vuskovic",    "Luka",      "Croatia"),
+    ("Antonio Silva",    "Silva",       "Antonio",   "Portugal"),   # Benfica CB
+    ("Ousmane Diomande", "Diomande",    "Ousmane",   ""),
+    ("Christos Tzolis",  "Tzolis",      "Christos",  "Greece"),
 ]
 
 
-def _coeff(league_name: str) -> tuple[float, str]:
-    """League-strength multiplier vs the PL (estimates; specific keys first)."""
+def _coeff(league_name: str, country: str = "") -> tuple[float, str]:
+    """League-strength multiplier vs the PL (estimates). Country disambiguates
+    names shared across nations (e.g. 'Bundesliga' = Germany 0.88 vs Austria
+    0.58; 'Serie A' = Italy 0.86 vs Brazil)."""
     n = (league_name or "").lower()
+    c = (country or "").lower()
+    if "bundesliga" in n and ("2." in n or "bundesliga 2" in n):
+        return 0.65, "2.bundesliga"
+    if "bundesliga" in n:
+        return (0.58, "austria") if "austria" in c else (0.88, "bundesliga")
+    if "serie a" in n:
+        return (0.86, "serie a") if "italy" in c else (0.60, "serie a (non-IT)")
     table = [
-        ("2. bundesliga", 0.65), ("bundesliga 2", 0.65),
         ("championship",  0.70), ("eredivisie", 0.70),
         ("primeira",      0.70), ("liga portugal", 0.70),
         ("jupiler",       0.63), ("pro league", 0.63),
         ("super lig",     0.62),
-        ("bundesliga - austria", 0.58), ("austria", 0.58),
         ("super league",  0.55),
         ("la liga",       0.90), ("primera",     0.90),
-        ("serie a",       0.86),
         ("ligue 1",       0.82),
-        ("bundesliga",    0.88),
         ("premier league", 1.00),
     ]
     for key, val in table:
@@ -92,7 +97,7 @@ def _get(path: str, params: dict) -> dict:
     return r.json()
 
 
-def find_player(display: str, search: str, hint: str) -> tuple:
+def find_player(display: str, search: str, hint: str, nat: str) -> tuple:
     data = _get("/players/profiles", {"search": search})
     resp = data.get("response", []) or []
     if not resp:
@@ -105,6 +110,8 @@ def find_player(display: str, search: str, hint: str) -> tuple:
         s = difflib.SequenceMatcher(None, name, target).ratio()
         if hint and hint.lower() in (p.get("firstname") or "").lower():
             s += 0.3
+        if nat and nat.lower() in (p.get("nationality") or "").lower():
+            s += 0.25
         return s
 
     best = max(resp, key=score)
@@ -159,9 +166,9 @@ def per90(s: dict, n90: float) -> dict:
 
 out: dict = {}
 print(f"Harvesting {len(TARGETS)} new signings (prior season {SEASON}/{SEASON+1})...\n")
-for display, search, hint in TARGETS:
+for display, search, hint, nat in TARGETS:
     try:
-        pid, api_name, ncand = find_player(display, search, hint)
+        pid, api_name, ncand = find_player(display, search, hint, nat)
         if not pid:
             print(f"  {display:22s} — NOT FOUND (0 candidates for '{search}')")
             continue
@@ -178,7 +185,8 @@ for display, search, hint in TARGETS:
         minutes = gm.get("minutes") or 0
         pos     = _norm_pos((gm.get("position") or "")[:3]) if gm.get("position") else "MID"
         n90     = minutes / 90.0
-        coeff, matched = _coeff(league)
+        country = (s.get("league") or {}).get("country", "")
+        coeff, matched = _coeff(league, country)
         p90     = per90(s, n90) if n90 > 0 else {}
         est     = round(_est_flat_pts(p90, pos), 2)
         out[_norm_name(display)] = {

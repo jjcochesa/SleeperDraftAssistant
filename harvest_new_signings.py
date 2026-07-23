@@ -119,23 +119,31 @@ def find_player(display: str, search: str, hint: str, nat: str) -> tuple:
     return p.get("id"), p.get("name"), len(resp)
 
 
-def primary_stats(pid: int) -> dict | None:
-    data = _get("/players", {"id": pid, "season": SEASON})
-    resp = data.get("response", []) or []
-    if not resp:
-        return None, []
-    stats_list = resp[0].get("statistics", []) or []
-    # domestic-league entries only, with minutes
-    league = [
-        s for s in stats_list
-        if (s.get("league") or {}).get("type") == "League"
-        and not _SKIP_COMP.search((s.get("league") or {}).get("name", ""))
-        and ((s.get("games") or {}).get("minutes") or 0) > 0
-    ]
-    pool = league or [s for s in stats_list if ((s.get("games") or {}).get("minutes") or 0) > 0]
-    if not pool:
-        return None, stats_list
-    return max(pool, key=lambda s: (s.get("games") or {}).get("minutes") or 0), stats_list
+def primary_stats(pid: int) -> tuple:
+    """Most recent season (try 2025/26, then fall back to 2024/25) with usable
+    domestic-league minutes. Returns (stat_line, season_used, all_comps)."""
+    last_all = []
+    for season in (SEASON, SEASON - 1):
+        data = _get("/players", {"id": pid, "season": season})
+        resp = data.get("response", []) or []
+        if not resp:
+            continue
+        stats_list = resp[0].get("statistics", []) or []
+        last_all = stats_list
+        league = [
+            s for s in stats_list
+            if (s.get("league") or {}).get("type") == "League"
+            and not _SKIP_COMP.search((s.get("league") or {}).get("name", ""))
+            and ((s.get("games") or {}).get("minutes") or 0) > 0
+        ]
+        pool = league or [s for s in stats_list
+                          if ((s.get("games") or {}).get("minutes") or 0) > 0
+                          and not _SKIP_COMP.search((s.get("league") or {}).get("name", ""))]
+        if pool:
+            best = max(pool, key=lambda s: (s.get("games") or {}).get("minutes") or 0)
+            return best, season, stats_list
+        time.sleep(0.15)
+    return None, None, last_all
 
 
 def per90(s: dict, n90: float) -> dict:
@@ -173,7 +181,7 @@ for display, search, hint, nat in TARGETS:
             print(f"  {display:22s} — NOT FOUND (0 candidates for '{search}')")
             continue
         time.sleep(0.2)
-        s, all_stats = primary_stats(pid)
+        s, season_used, all_stats = primary_stats(pid)
         if not s:
             comps = ", ".join((e.get("league") or {}).get("name", "?") for e in all_stats) or "none"
             print(f"  {display:22s} — {api_name}: no usable league season. comps=[{comps}]")
@@ -197,10 +205,12 @@ for display, search, hint, nat in TARGETS:
             "coeff":        coeff,
             "position":     pos,
             "minutes":      int(minutes),
+            "source_season":season_used,
             "per90":        p90,
             "est_pp90_raw": est,   # pre-calibration; engine rescales onto pts_std
         }
-        print(f"  {display:22s} {team:16s} {league:20s} min={int(minutes):4d} "
+        yr = f"{str(season_used)[2:]}/{str(season_used + 1)[2:]}"
+        print(f"  {display:22s} {team:16s} {league:20s} {yr} min={int(minutes):4d} "
               f"est_pp90={est:5.2f} x{coeff}  ({ncand} cand)")
         time.sleep(0.2)
     except Exception as exc:

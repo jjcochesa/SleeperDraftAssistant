@@ -441,13 +441,48 @@ def load_lineups(path: str = "data/lineups_2026.json") -> dict[str, list]:
     return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
+def _match_name_list(players: dict, season_stats: dict, name_lists: dict) -> set:
+    """
+    Resolve a {club: [names]} dict to Sleeper player_ids. A name matches a pool
+    player when every token of the (normalised) name is in the pool player's
+    name tokens (handles multi-word surnames + mononyms); ties broken by most
+    25/26 minutes (the most likely intended player).
+    """
+    if not name_lists:
+        return set()
+    pool = []
+    for pid, sp in players.items():
+        fn = (sp.get("full_name") or sp.get("name")
+              or " ".join(filter(None, [sp.get("first_name"), sp.get("last_name")])) or "")
+        pool.append((pid, set(_norm_name(fn).split())))
+
+    def mins(pid: str) -> float:
+        return float((season_stats.get(pid) or {}).get("min") or 0)
+
+    matched: set = set()
+    for _club, names in name_lists.items():
+        for name in names:
+            nt = set(_norm_name(name).split())
+            if not nt:
+                continue
+            cands = [pid for pid, pt in pool if nt <= pt]
+            if cands:
+                matched.add(max(cands, key=mins))
+    return matched
+
+
+def load_bench(path: str = "data/bench_2026.json") -> dict[str, list]:
+    """Load explicit bench/faded-role overrides {club: [names]}. These players'
+    expected volume is heavily discounted regardless of last season's minutes —
+    for a player who has fallen out of favour, been out-signed, or is a known
+    backup, so their historically-good numbers don't keep inflating them."""
+    return load_lineups(path)
+
+
 def resolve_nailed_starters(players: dict, season_stats: dict,
                             lineups: dict) -> tuple[set, dict]:
     """
-    Resolve lineup names to Sleeper player_ids. A lineup name matches a pool
-    player when every token of the (normalised) name is in the pool player's
-    name tokens (handles multi-word surnames + mononyms); ties broken by most
-    25/26 minutes (the established starter).
+    Resolve lineup names to Sleeper player_ids (see _match_name_list).
 
     Returns (nailed_pids, team_id_to_club). The second value is learned from the
     data: each matched player's Sleeper numeric team id is voted onto the club
@@ -533,6 +568,7 @@ def build_player_stats(
     nailed_pids:    Optional[set] = None,
     new_signings:   Optional[dict] = None,
     team_map:       Optional[dict] = None,
+    bench_pids:     Optional[set] = None,
 ) -> dict[str, dict]:
     """
     Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA,
@@ -652,12 +688,21 @@ def build_player_stats(
         # Fixture-level stats (accurate crosses unavailable in API; dispossessed is good)
         fix: dict = fixture_stats.get(key) or {} if fixture_stats else {}
 
-        # starter_rate: fraction of appearances that were starts.
-        # From API-Football when available; defaults to 1.0 (assume starter).
-        starter_rate = apif.get("starter_rate", 1.0) if apif else 1.0
+        # starter_rate: fraction of appearances that were starts, from
+        # API-Football. Only meaningful when we actually have that data — a
+        # missing match must NOT silently default to "assumed starter", or
+        # every player without a matched apif record would qualify for the
+        # established-starter floor below regardless of real evidence.
+        has_apif     = bool(apif)
+        starter_rate = apif.get("starter_rate", 1.0) if has_apif else None
 
         # Nailed starter = named in the 26/27 predicted lineups (manual override).
+        # Bench = explicit "this player's role has faded / he's a backup now"
+        # override — takes priority over nailed (can't be both).
         nailed = bool(nailed_pids and pid in nailed_pids)
+        bench  = bool(bench_pids and pid in bench_pids)
+        if bench:
+            nailed = False
 
         # 26/27 projection: PP90-based Bayesian shrinkage + expected minutes.
         # PP90 = pts per 90 min. Unlike PPG, a 20-min sub cameo no longer drags
@@ -667,6 +712,7 @@ def build_player_stats(
         # Players with < MIN_GW games are excluded (projected_pts = 0).
         FULL_SEASON    = 38.0   # EPL games in a season
         NAILED_APPS    = 34.0   # appearances assumed for a nailed starter
+        BENCH_APPS     = 8.0    # appearances assumed for an explicit bench/faded player
         NEWSIGNING_N90 = 28.0   # assumed 90s for a foreign new signing (adaptation)
         n90  = mins / 90.0
         # Nailed starters project even on a sub-MIN_GW sample (e.g. a squad
@@ -689,11 +735,20 @@ def build_player_stats(
             # promotion. This keeps durable ever-presents at their real 37-38
             # while stopping cameo players exploding to a full season.
             mpa = (mins / games) if games > 0 else 0.0          # minutes/appearance
-            if nailed:
+            if bench:
+                # Explicit override: role has faded / known backup this season.
+                # Ignore last season's volume entirely so a good 25/26 (played
+                # under a different manager, different pecking order, different
+                # club) can't keep inflating a player who won't get minutes now.
+                exp_apps = BENCH_APPS
+            elif nailed:
                 exp_apps = min(FULL_SEASON, max(float(games), NAILED_APPS))
             else:
                 exp_apps = float(games)
-                if games >= 25 and starter_rate >= 0.8:
+                # "established starter coming off an injury-shortened season"
+                # floor — only when we have REAL evidence of a high start rate,
+                # not just the absence of API-Football data for this player.
+                if games >= 25 and has_apif and starter_rate is not None and starter_rate >= 0.8:
                     exp_apps = max(0.75 * FULL_SEASON, exp_apps)
             exp_n90 = min(FULL_SEASON, exp_apps * (mpa / 90.0))
             projected_pts = round(blended_pp90 * exp_n90, 1)
@@ -1223,12 +1278,15 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
     lineups     = load_lineups()
     nailed_pids, team_map = resolve_nailed_starters(players, season_stats, lineups)
 
+    # Explicit bench/faded-role overrides (heavily discount regardless of 25/26)
+    bench_pids = _match_name_list(players, season_stats, load_bench())
+
     # Foreign per-90 stats for new signings (coefficient-adjusted projections)
     new_signings = load_new_signings()
 
     player_data = build_player_stats(
         players, season_stats, fpl_lookup, understat, teams_lookup,
-        pl_stats, fixture_stats, nailed_pids, new_signings, team_map
+        pl_stats, fixture_stats, nailed_pids, new_signings, team_map, bench_pids
     )
 
     return {

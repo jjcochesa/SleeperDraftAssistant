@@ -1,0 +1,8 @@
+{
+  "_note": "Explicit bench/faded-role overrides. Listed players have their expected 26/27 appearances heavily discounted (BENCH_APPS in draft_engine.py) regardless of their 25/26 minutes or rate — for players who have fallen out of favour, are backups, or moved down the pecking order. Takes priority over the nailed list.",
+  "Chelsea": ["Chalobah"],
+  "Tottenham Hotspur": ["Dubravka"],
+  "Manchester City": ["Grealish"],
+  "Newcastle United": ["Miley"],
+  "Nottingham Forest": ["Hutchinson"]
+}

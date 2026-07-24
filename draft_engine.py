@@ -479,6 +479,18 @@ def load_bench(path: str = "data/bench_2026.json") -> dict[str, list]:
     return load_lineups(path)
 
 
+def load_promoted(path: str = "data/promoted_2026.json") -> dict[str, list]:
+    """Load role-promotion overrides {club: [names]}: players whose 25/26
+    minutes-per-appearance UNDERSTATES their 26/27 role — a striker who was a
+    backup and is now first choice, or a starter whose minutes were wrecked by
+    injury. Their own low mpa is ignored in favour of full starter minutes.
+
+    This can't be inferred from data: a low-mpa player with few appearances is
+    equally consistent with "injured star returning" and "fading squad player",
+    and the two need opposite treatment. Hence an explicit list."""
+    return load_lineups(path)
+
+
 def resolve_nailed_starters(players: dict, season_stats: dict,
                             lineups: dict) -> tuple[set, dict]:
     """
@@ -569,6 +581,7 @@ def build_player_stats(
     new_signings:   Optional[dict] = None,
     team_map:       Optional[dict] = None,
     bench_pids:     Optional[set] = None,
+    promoted_pids:  Optional[set] = None,
 ) -> dict[str, dict]:
     """
     Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA,
@@ -699,10 +712,13 @@ def build_player_stats(
         # Nailed starter = named in the 26/27 predicted lineups (manual override).
         # Bench = explicit "this player's role has faded / he's a backup now"
         # override — takes priority over nailed (can't be both).
-        nailed = bool(nailed_pids and pid in nailed_pids)
-        bench  = bool(bench_pids and pid in bench_pids)
+        nailed   = bool(nailed_pids and pid in nailed_pids)
+        bench    = bool(bench_pids and pid in bench_pids)
+        promoted = bool(promoted_pids and pid in promoted_pids)
         if bench:
-            nailed = False
+            nailed = promoted = False
+        if promoted:
+            nailed = True          # a promoted player is by definition starting
 
         # 26/27 projection: PP90-based Bayesian shrinkage + expected minutes.
         # PP90 = pts per 90 min. Unlike PPG, a 20-min sub cameo no longer drags
@@ -713,6 +729,7 @@ def build_player_stats(
         FULL_SEASON    = 38.0   # EPL games in a season
         NAILED_APPS    = 34.0   # appearances assumed for a nailed starter
         BENCH_APPS     = 8.0    # appearances assumed for an explicit bench/faded player
+        STARTER_MPA    = 80.0   # minutes/appearance for a first-choice starter
         NEWSIGNING_N90 = 28.0   # assumed 90s for a foreign new signing (adaptation)
         n90  = mins / 90.0
         # Nailed starters project even on a sub-MIN_GW sample (e.g. a squad
@@ -735,6 +752,11 @@ def build_player_stats(
             # promotion. This keeps durable ever-presents at their real 37-38
             # while stopping cameo players exploding to a full season.
             mpa = (mins / games) if games > 0 else 0.0          # minutes/appearance
+            if promoted:
+                # Role promotion: last season's mpa reflects a role the player
+                # no longer has (backup striker now first choice, or a starter
+                # whose season was wrecked by injury). Use full starter minutes.
+                mpa = max(mpa, STARTER_MPA)
             if bench:
                 # Explicit override: role has faded / known backup this season.
                 # Ignore last season's volume entirely so a good 25/26 (played
@@ -765,7 +787,18 @@ def build_player_stats(
                         ns = next((v for k, v in new_signings.items() if k.endswith(last)), {})
             if nailed and ns.get("per90"):
                 est_pp90 = _est_flat_pts(ns["per90"], pos)
-                pp90 = max(0.0, round(est_pp90 * calib.get(pos, 1.0) * ns.get("coeff", 0.65), 2))
+                raw_pp90 = max(0.0, est_pp90 * calib.get(pos, 1.0) * ns.get("coeff", 0.65))
+                # Shrink hard toward the position average. calib fixes the SCALE
+                # and coeff discounts league STRENGTH, but neither accounts for
+                # having zero Premier League evidence — a player who dominated a
+                # weak league still cleared both and landed top-10. Treat a new
+                # signing as a small amount of evidence against the prior, so
+                # extreme foreign rates regress to something believable.
+                prior_pp90   = pos_avg.get(pos, 8.0)
+                NS_EVIDENCE  = 6.0                       # equivalent 90s of trust
+                k_ns         = 40.0 / (NS_EVIDENCE ** 0.5)
+                pp90 = round((NS_EVIDENCE * raw_pp90 + k_ns * prior_pp90)
+                             / (NS_EVIDENCE + k_ns), 2)
                 projected_pts = round(pp90 * NEWSIGNING_N90, 1)
             else:
                 projected_pts = 0.0
@@ -1281,12 +1314,16 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
     # Explicit bench/faded-role overrides (heavily discount regardless of 25/26)
     bench_pids = _match_name_list(players, season_stats, load_bench())
 
+    # Role-promotion overrides (ignore last season's low minutes-per-appearance)
+    promoted_pids = _match_name_list(players, season_stats, load_promoted())
+
     # Foreign per-90 stats for new signings (coefficient-adjusted projections)
     new_signings = load_new_signings()
 
     player_data = build_player_stats(
         players, season_stats, fpl_lookup, understat, teams_lookup,
-        pl_stats, fixture_stats, nailed_pids, new_signings, team_map, bench_pids
+        pl_stats, fixture_stats, nailed_pids, new_signings, team_map,
+        bench_pids, promoted_pids
     )
 
     return {

@@ -1,0 +1,5 @@
+{
+  "_note": "Role-promotion overrides. These players' 25/26 minutes-per-appearance UNDERSTATES their 26/27 role, so their own mpa is replaced with full starter minutes (STARTER_MPA in draft_engine.py). Use for: a backup now first choice, or a starter whose season was wrecked by injury/transfer limbo. This cannot be inferred from data — a low-mpa player is equally consistent with 'injured star returning' and 'fading squad player', which need opposite treatment.",
+  "Liverpool": ["Isak", "Kerkez"],
+  "Newcastle United": ["Osula"]
+}

@@ -942,12 +942,15 @@ def build_player_stats(
     return result
 
 
-# Starting slots per position in a typical XI — sets how deep the league digs
-# at each position, which is what determines replacement level.
-STARTERS_PER_TEAM = {"GK": 1, "DEF": 4, "MID": 4, "FWD": 2}
+# Roster slots per position — how deep the league digs at each position, which
+# is what sets replacement level. These are the league's actual roster limits
+# (1 GK / 6 DEF / 6 MID / 3 FWD = 16, matching the 16-round draft), NOT a
+# starting XI: the player you'd really fall back to is the next one on waivers
+# after every team has filled its roster.
+STARTERS_PER_TEAM = {"GK": 1, "DEF": 6, "MID": 6, "FWD": 3}
 
 
-def compute_vorp(result: dict, num_teams: int = 10,
+def compute_vorp(result: dict, num_teams: int = 12,
                  starters: Optional[dict] = None) -> None:
     """
     Add value-over-replacement ('vorp') to every player record, in place.

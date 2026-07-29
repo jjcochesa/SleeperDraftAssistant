@@ -13,6 +13,7 @@ import streamlit as st
 
 from draft_engine import (
     DraftState,
+    compute_vorp,
     _fetch_player_db,
     _norm_name,
     _sleeper_season_year,
@@ -187,6 +188,11 @@ player_db = _load_player_db(season, int(season))
 ds: DraftState = _get_draft_state(selected_draft_id, LEAGUE_ID)
 ds.my_roster_id = my_roster_id
 ds.inject_player_db(player_db)   # cheap — stable dict reference from cache
+
+# Recompute VORP against THIS league's size. Replacement level depends on how
+# many teams are drafting, which build_player_stats can't know (it runs before
+# the draft is loaded). Idempotent — recomputed from projected_pts each time.
+compute_vorp(ds.player_data, num_teams=ds.num_teams)
 
 POS_ORDER = ds.position_order
 

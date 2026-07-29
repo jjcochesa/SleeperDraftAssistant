@@ -950,7 +950,7 @@ def build_player_stats(
 STARTERS_PER_TEAM = {"GK": 1, "DEF": 6, "MID": 6, "FWD": 3}
 
 
-def compute_vorp(result: dict, num_teams: int = 12,
+def compute_vorp(result: dict, num_teams: int = 10,
                  starters: Optional[dict] = None) -> None:
     """
     Add value-over-replacement ('vorp') to every player record, in place.

@@ -197,23 +197,28 @@ POS_ORDER = ds.position_order
 def _auto_dp_score(p: dict) -> float:
     """
     Scoring for auto-generated DP rankings.
-    projected_pts is the primary signal — it already captures Sleeper's full
-    scoring model including defensive volume for MIDs.
+    VORP (value over replacement at position) is the primary signal, not raw
+    projected points: a draft board has to compare a GK to a midfielder, and
+    only VORP prices in positional scarcity — the last startable GK is close
+    to the best one, while the MID cliff is steep.
     Small xG90/xA90 bonus for FWD/MID surfaces attackers whose raw pts may
     understate quality (e.g. a striker with high xG but low team chances).
     Players with no stats fall to bottom, sorted by FPL cost proxy.
     """
     proj = p.get("projected_pts") or 0.0
     if proj > 0:
+        score = p.get("vorp")
+        if score is None:
+            score = proj
         pos = p.get("position", "")
         xg90 = p.get("xG90") or 0.0
         xa90 = p.get("xA90") or 0.0
         if pos in ("FWD", "MID"):
             # xG90 → rough Sleeper pts equivalent: goal ≈ 9 pts so xG90 * 9 * 0.5
-            proj += xg90 * 4.5 + xa90 * 2.5
-        return proj
+            score += xg90 * 4.5 + xa90 * 2.5
+        return score
     # No stats: use FPL cost as a rough proxy (cost already in £m)
-    return (p.get("cost") or 0.0) - 100   # negative so below all projected players
+    return (p.get("cost") or 0.0) - 1000   # far below any VORP-scored player
 
 if st.session_state.pop("_trigger_auto_dp", False):
     all_players = list(ds.player_data.values())
@@ -299,6 +304,7 @@ def _build_rankings_df(
             "PP90":      p.get("pp90", 0.0),
             "GW":        p["games"],
             "26/27 Proj":p["projected_pts"],
+            "VORP":      p.get("vorp", 0.0),
             "Draft Pos":  p.get("adp_rank"),
             "DP Rec":    dp_rec,
             # hidden detail cols
@@ -506,7 +512,8 @@ with tab_ranks:
     with r_col2:
         sort_mode = st.radio(
             "Sort by",
-            ["26/27 Projected", "25/26 Total Pts", "GW Avg (PPG)", "Per 90 (PP90)"],
+            ["VORP (draft order)", "26/27 Projected", "25/26 Total Pts",
+             "GW Avg (PPG)", "Per 90 (PP90)"],
             horizontal=True,
             key="ranks_sort",
         )
@@ -516,6 +523,7 @@ with tab_ranks:
         show_detail = st.toggle("Detail cols", value=False, key="ranks_detail")
 
     sort_col_map = {
+        "VORP (draft order)": "VORP",
         "26/27 Projected": "26/27 Proj",
         "25/26 Total Pts": "25/26 Pts",
         "GW Avg (PPG)":    "PPG",
@@ -525,6 +533,7 @@ with tab_ranks:
 
     pos_arg   = None if pos_filter == "All" else pos_filter
     available = ds.get_available(pos_arg, sort_by={
+        "VORP (draft order)": "vorp",
         "26/27 Projected": "projected_pts",
         "25/26 Total Pts": "total_pts",
         "GW Avg (PPG)":    "ppg",
@@ -536,7 +545,7 @@ with tab_ranks:
     else:
         df = _build_rankings_df(available, sort_col=sort_col)
 
-        show_cols = ["★", "Name", "Pos", "Club", "25/26 Pts", "PPG", "PP90", "GW", "26/27 Proj", "Draft Pos", "DP Rec"]
+        show_cols = ["★", "Name", "Pos", "Club", "25/26 Pts", "PPG", "PP90", "GW", "26/27 Proj", "VORP", "Draft Pos", "DP Rec"]
 
         if show_detail:
             detail_map = {
@@ -558,13 +567,15 @@ with tab_ranks:
                 show_cols.append(label)
 
         df_show = df[show_cols].copy()
-        fmt = {"25/26 Pts": "{:.1f}", "PPG": "{:.2f}", "PP90": "{:.2f}", "26/27 Proj": "{:.1f}"}
+        fmt = {"25/26 Pts": "{:.1f}", "PPG": "{:.2f}", "PP90": "{:.2f}",
+               "26/27 Proj": "{:.1f}", "VORP": "{:+.0f}"}
         if show_detail:
             fmt |= {"FPL Own%": "{:.1f}", "Pen": "{:.0f}", "Crn": "{:.0f}", "FK": "{:.0f}"}
             if ds.understat_loaded:
                 fmt |= {"xG": "{:.2f}", "xA": "{:.2f}", "xG90": "{:.3f}", "xA90": "{:.3f}"}
 
         gradient_col = {
+            "VORP (draft order)": "VORP",
             "26/27 Projected": "26/27 Proj",
             "25/26 Total Pts": "25/26 Pts",
             "GW Avg (PPG)":    "PPG",
@@ -590,6 +601,9 @@ with tab_ranks:
             st.warning("Sleeper season stats not loaded — points and projections show 0.")
 
     st.caption(
+        "**VORP** = points above the last startable player at that position (replacement level) — "
+        "this is the true draft order, because it prices positional scarcity: GKs cluster tightly "
+        "so their VORP is compressed, while a steep MID drop-off is rewarded  ·  "
         "**★** = nailed starter (in 26/27 predicted lineups) → projected over a near-full season, "
         "which surfaces returning players whose 25/26 minutes were suppressed by injury/rotation  ·  "
         "**26/27 Proj** = Bayesian-blended PP90 (points per 90, individual + position prior) × expected 90s  ·  "

@@ -938,7 +938,49 @@ def build_player_stats(
     for rank, (key, _) in enumerate(ranked, 1):
         result[key]["adp_rank"] = rank
 
+    compute_vorp(result)
     return result
+
+
+# Starting slots per position in a typical XI — sets how deep the league digs
+# at each position, which is what determines replacement level.
+STARTERS_PER_TEAM = {"GK": 1, "DEF": 4, "MID": 4, "FWD": 2}
+
+
+def compute_vorp(result: dict, num_teams: int = 10,
+                 starters: Optional[dict] = None) -> None:
+    """
+    Add value-over-replacement ('vorp') to every player record, in place.
+
+    Projected points alone is the wrong draft order: it compares a GK to a
+    midfielder as if they were interchangeable. What actually matters at the
+    table is how much a player beats the guy you could still get at that
+    position later. Replacement level = the (num_teams x starters) ranked
+    player at each position — i.e. the last starter the league will roster —
+    so positions that cluster tightly (GKs) get compressed and positions with
+    a steep drop-off (MIDs) get their scarcity priced in.
+
+    Only draftable (in_pl) players count toward replacement level, otherwise
+    departed stars and out-of-league players would drag the baseline down.
+    """
+    starters = starters or STARTERS_PER_TEAM
+    by_pos: dict[str, list[float]] = {}
+    for d in result.values():
+        if d.get("in_pl", True) and d.get("projected_pts"):
+            by_pos.setdefault(d.get("position", "UNK"), []).append(d["projected_pts"])
+
+    baseline: dict[str, float] = {}
+    for pos, vals in by_pos.items():
+        vals.sort(reverse=True)
+        idx = num_teams * starters.get(pos, 2)
+        # If the pool is shallower than the league needs, fall back to the
+        # worst rostered player rather than indexing off the end.
+        baseline[pos] = vals[idx - 1] if len(vals) >= idx else (vals[-1] if vals else 0.0)
+
+    for d in result.values():
+        base = baseline.get(d.get("position", "UNK"), 0.0)
+        d["vorp"] = round((d.get("projected_pts") or 0.0) - base, 1)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1177,6 +1219,7 @@ class DraftState:
             "corner_order":    data.get("corner_order"),
             "fk_order":        data.get("fk_order"),
             "adp_rank":        data.get("adp_rank"),
+            "vorp":            data.get("vorp", 0.0),
             "xG":              data.get("xG"),
             "xA":              data.get("xA"),
             "xG90":            data.get("xG90"),
@@ -1204,7 +1247,7 @@ class DraftState:
             if position and p["position"] != position:
                 continue
             out.append(p)
-        key = sort_by if sort_by in ("projected_pts", "ppg", "pp90", "total_pts") else "projected_pts"
+        key = sort_by if sort_by in ("projected_pts", "ppg", "pp90", "total_pts", "vorp") else "projected_pts"
         return sorted(out, key=lambda x: x[key], reverse=True)
 
     def get_my_picks(self) -> list[dict]:

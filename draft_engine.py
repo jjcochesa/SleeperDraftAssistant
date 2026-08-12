@@ -479,6 +479,28 @@ def load_bench(path: str = "data/bench_2026.json") -> dict[str, list]:
     return load_lineups(path)
 
 
+def load_injured(path: str = "data/injured_2026.json") -> dict[str, dict]:
+    """Load known absences {club: {name: games_expected_to_miss}}. Empty if missing."""
+    import json
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return {}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+def resolve_injured(players: dict, season_stats: dict, injured: dict) -> dict:
+    """Resolve the injury map to {player_id: games_missed}."""
+    out: dict[str, float] = {}
+    for club, entries in injured.items():
+        for name, games in entries.items():
+            pids = _match_name_list(players, season_stats, {club: [name]})
+            for pid in pids:
+                out[pid] = float(games)
+    return out
+
+
 def load_promoted(path: str = "data/promoted_2026.json") -> dict[str, list]:
     """Load role-promotion overrides {club: [names]}: players whose 25/26
     minutes-per-appearance UNDERSTATES their 26/27 role — a striker who was a
@@ -582,6 +604,7 @@ def build_player_stats(
     team_map:       Optional[dict] = None,
     bench_pids:     Optional[set] = None,
     promoted_pids:  Optional[set] = None,
+    injured_games:  Optional[dict] = None,
 ) -> dict[str, dict]:
     """
     Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA,
@@ -715,6 +738,7 @@ def build_player_stats(
         nailed   = bool(nailed_pids and pid in nailed_pids)
         bench    = bool(bench_pids and pid in bench_pids)
         promoted = bool(promoted_pids and pid in promoted_pids)
+        out_games = float((injured_games or {}).get(pid) or 0.0)
         if bench:
             nailed = promoted = False
         if promoted:
@@ -772,6 +796,12 @@ def build_player_stats(
                 # not just the absence of API-Football data for this player.
                 if games >= 25 and has_apif and starter_rate is not None and starter_rate >= 0.8:
                     exp_apps = max(0.75 * FULL_SEASON, exp_apps)
+            # Known absence: cap appearances by the games the player is expected
+            # to miss. This is a third state distinct from nailed and benched —
+            # a starter out until December is neither a full-season asset nor a
+            # squad player, and both of those overrides get it badly wrong.
+            if out_games:
+                exp_apps = min(exp_apps, max(0.0, FULL_SEASON - out_games))
             exp_n90 = min(FULL_SEASON, exp_apps * (mpa / 90.0))
             projected_pts = round(blended_pp90 * exp_n90, 1)
         else:
@@ -879,6 +909,7 @@ def build_player_stats(
             "position":        pos,
             "in_pl":           in_pl,
             "nailed":          nailed,
+            "out_games":       out_games,
             # 25/26 Sleeper season totals (pts_std verbatim via _calc_pts)
             "total_pts":       total_pts,
             "ppg":             ppg,
@@ -1371,13 +1402,16 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
     # Role-promotion overrides (ignore last season's low minutes-per-appearance)
     promoted_pids = _match_name_list(players, season_stats, load_promoted())
 
+    # Known absences → cap expected appearances
+    injured_games = resolve_injured(players, season_stats, load_injured())
+
     # Foreign per-90 stats for new signings (coefficient-adjusted projections)
     new_signings = load_new_signings()
 
     player_data = build_player_stats(
         players, season_stats, fpl_lookup, understat, teams_lookup,
         pl_stats, fixture_stats, nailed_pids, new_signings, team_map,
-        bench_pids, promoted_pids
+        bench_pids, promoted_pids, injured_games
     )
 
     return {

@@ -465,11 +465,7 @@ def _match_name_list(players: dict, season_stats: dict, name_lists: dict) -> set
     """
     if not name_lists:
         return set()
-    pool = []
-    for pid, sp in players.items():
-        fn = (sp.get("full_name") or sp.get("name")
-              or " ".join(filter(None, [sp.get("first_name"), sp.get("last_name")])) or "")
-        pool.append((pid, set(_norm_name(fn).split())))
+    pool = _build_pool(players)
 
     def mins(pid: str) -> float:
         return float((season_stats.get(pid) or {}).get("min") or 0)
@@ -477,13 +473,46 @@ def _match_name_list(players: dict, season_stats: dict, name_lists: dict) -> set
     matched: set = set()
     for _club, names in name_lists.items():
         for name in names:
-            nt = set(_norm_name(name).split())
-            if not nt:
-                continue
-            cands = [pid for pid, pt in pool if nt <= pt]
-            if cands:
-                matched.add(max(cands, key=mins))
+            pid = _resolve_one(name, pool, mins)
+            if pid:
+                matched.add(pid)
     return matched
+
+
+def _build_pool(players: dict) -> list:
+    """[(pid, name_tokens, surname_token)] for name matching."""
+    pool = []
+    for pid, sp in players.items():
+        fn = (sp.get("full_name") or sp.get("name")
+              or " ".join(filter(None, [sp.get("first_name"), sp.get("last_name")])) or "")
+        toks = _norm_name(fn).split()
+        last = _norm_name(sp.get("last_name") or "").split()
+        pool.append((pid, set(toks), last[-1] if last else (toks[-1] if toks else "")))
+    return pool
+
+
+def _resolve_one(name: str, pool: list, mins) -> Optional[str]:
+    """
+    Resolve one lineup name to a player id.
+
+    A single-token entry is matched against SURNAMES first. Plain token-subset
+    matching lets a bare surname be captured by someone else's FIRST name —
+    "Kevin" (Fulham) was landing on Kevin Schade, "Rayan" (Bournemouth) on
+    Rayan Cherki, "Smith" (Bournemouth) on Emile Smith Rowe — each time
+    stealing the entry from the intended player, who then vanished from the
+    board entirely. Falling back to token-subset keeps mononyms working
+    ("Gabriel" -> Gabriel Magalhaes, whose surname is Magalhaes).
+    """
+    nt = set(_norm_name(name).split())
+    if not nt:
+        return None
+    cands: list = []
+    if len(nt) == 1:
+        tok = next(iter(nt))
+        cands = [pid for pid, _toks, last in pool if last == tok]
+    if not cands:
+        cands = [pid for pid, toks, _last in pool if nt <= toks]
+    return max(cands, key=mins) if cands else None
 
 
 def load_bench(path: str = "data/bench_2026.json") -> dict[str, list]:
@@ -565,11 +594,7 @@ def resolve_nailed_starters(players: dict, season_stats: dict,
     """
     if not lineups:
         return set(), {}
-    pool = []
-    for pid, sp in players.items():
-        fn = (sp.get("full_name") or sp.get("name")
-              or " ".join(filter(None, [sp.get("first_name"), sp.get("last_name")])) or "")
-        pool.append((pid, set(_norm_name(fn).split())))
+    pool = _build_pool(players)
 
     def mins(pid: str) -> float:
         return float((season_stats.get(pid) or {}).get("min") or 0)
@@ -578,13 +603,9 @@ def resolve_nailed_starters(players: dict, season_stats: dict,
     votes: dict[str, dict[str, int]] = {}
     for club, names in lineups.items():
         for name in names:
-            nt = set(_norm_name(name).split())
-            if not nt:
+            pid = _resolve_one(name, pool, mins)
+            if not pid:
                 continue
-            cands = [pid for pid, pt in pool if nt <= pt]
-            if not cands:
-                continue
-            pid = max(cands, key=mins)
             nailed.add(pid)
             tid = str((players.get(pid) or {}).get("team") or "").strip()
             if tid.isdigit():

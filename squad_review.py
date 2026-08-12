@@ -49,6 +49,28 @@ listed   = _match_name_list(players, stats, lineups)
 listed  |= _match_name_list(players, stats, load_bench())
 listed  |= _match_name_list(players, stats, load_promoted())
 
+# Collision guard: one pool player claimed by two lineup entries means at least
+# one of them silently resolved to the wrong person (e.g. bare "Martinez" under
+# both Villa and Man Utd both landing on Emi, leaving Lisandro unmatched).
+claims = {}
+collisions = []
+for club, names in lineups.items():
+    if club.startswith("_"):
+        continue
+    for n in names:
+        got = _match_name_list(players, stats, {club: [n]})
+        for pid in got:
+            if pid in claims:
+                collisions.append((claims[pid], pid, f"{n} ({club})"))
+            else:
+                claims[pid] = f"{n} ({club})"
+if collisions:
+    print("!! NAME COLLISIONS — same pool player claimed twice, use full names:")
+    for a, pid, b in collisions:
+        nm = (players.get(pid) or {}).get("full_name", pid)
+        print(f"     {a}  AND  {b}  both -> {nm}")
+    print()
+
 def mins(pid):
     return float((stats.get(pid) or {}).get("min") or 0)
 

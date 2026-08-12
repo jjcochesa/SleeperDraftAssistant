@@ -422,6 +422,21 @@ def _match_apif(sp: dict, key: str, pl_stats: Optional[dict]) -> dict:
     return apif
 
 
+def _match_adp(key: str, sp: dict, adp: Optional[dict]) -> Optional[float]:
+    """Match a player to the consensus ADP list by name (exact, then unique surname)."""
+    if not adp:
+        return None
+    hit = adp.get(key)
+    if hit:
+        return hit.get("adp")
+    last = _norm_name(sp.get("last_name") or "")
+    if last:
+        hits = [v for k, v in adp.items() if k.split() and k.split()[-1] == last]
+        if len(hits) == 1:
+            return hits[0].get("adp")
+    return None
+
+
 def _median(vals: list) -> float:
     if not vals:
         return 1.0
@@ -477,6 +492,31 @@ def load_bench(path: str = "data/bench_2026.json") -> dict[str, list]:
     for a player who has fallen out of favour, been out-signed, or is a known
     backup, so their historically-good numbers don't keep inflating them."""
     return load_lineups(path)
+
+
+def load_fantrax_adp(path: str = "data/fantrax_adp_2026.json") -> dict[str, dict]:
+    """
+    Load expert-consensus draft ranks from Fantrax Default leagues.
+
+    Fantrax Default and Sleeper's EPL scoring are near-identical (both descend
+    from Togga): goals, assists, key passes, SoT, tackles, interceptions,
+    blocks, crosses, dribbles, aerials, dispossessed, cards and saves all match
+    exactly. That makes this ADP genuinely transferable, unlike FPL ownership.
+
+    The differences that DO matter, and where this ADP will misprice players
+    for our league:
+      - GK clean sheet is 8 here vs 6 on Fantrax
+      - Fantrax only penalises goals conceded from the SECOND goal in a match
+    Both push the same way: team defensive quality is worth more in our league,
+    so this ADP overrates keepers/defenders at leaky clubs and underrates them
+    at good ones.
+    """
+    import json
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        return {}
+    return json.loads(p.read_text(encoding="utf-8"))
 
 
 def load_injured(path: str = "data/injured_2026.json") -> dict[str, dict]:
@@ -605,6 +645,7 @@ def build_player_stats(
     bench_pids:     Optional[set] = None,
     promoted_pids:  Optional[set] = None,
     injured_games:  Optional[dict] = None,
+    fantrax_adp:    Optional[dict] = None,
 ) -> dict[str, dict]:
     """
     Merge Sleeper player info, season stats, FPL cost/ownership, Understat xG/xA,
@@ -910,6 +951,7 @@ def build_player_stats(
             "in_pl":           in_pl,
             "nailed":          nailed,
             "out_games":       out_games,
+            "adp":             _match_adp(key, sp, fantrax_adp),
             # 25/26 Sleeper season totals (pts_std verbatim via _calc_pts)
             "total_pts":       total_pts,
             "ppg":             ppg,
@@ -1022,6 +1064,18 @@ def compute_vorp(result: dict, num_teams: int = 10,
     for d in result.values():
         base = baseline.get(d.get("position", "UNK"), 0.0)
         d["vorp"] = round((d.get("projected_pts") or 0.0) - base, 1)
+
+    # Market-vs-model gap. Rank everyone by VORP, then compare that to where the
+    # expert consensus drafts them. A positive edge means the market lets the
+    # player slide later than our scoring says he is worth — that is the pick to
+    # target. Only meaningful for players the consensus actually ranked.
+    ranked = sorted((d for d in result.values() if d.get("in_pl", True)),
+                    key=lambda d: -(d.get("vorp") or 0.0))
+    for i, d in enumerate(ranked, 1):
+        d["vorp_rank"] = i
+    for d in result.values():
+        a, r = d.get("adp"), d.get("vorp_rank")
+        d["adp_edge"] = round(a - r, 1) if (a is not None and r is not None) else None
     return None
 
 
@@ -1262,6 +1316,8 @@ class DraftState:
             "fk_order":        data.get("fk_order"),
             "adp_rank":        data.get("adp_rank"),
             "vorp":            data.get("vorp", 0.0),
+            "adp":             data.get("adp"),
+            "adp_edge":        data.get("adp_edge"),
             "xG":              data.get("xG"),
             "xA":              data.get("xA"),
             "xG90":            data.get("xG90"),
@@ -1405,13 +1461,16 @@ def _fetch_player_db(season: str, understat_year: int) -> dict:
     # Known absences → cap expected appearances
     injured_games = resolve_injured(players, season_stats, load_injured())
 
+    # Expert-consensus draft ranks from Fantrax Default (near-identical scoring)
+    fantrax_adp = load_fantrax_adp()
+
     # Foreign per-90 stats for new signings (coefficient-adjusted projections)
     new_signings = load_new_signings()
 
     player_data = build_player_stats(
         players, season_stats, fpl_lookup, understat, teams_lookup,
         pl_stats, fixture_stats, nailed_pids, new_signings, team_map,
-        bench_pids, promoted_pids, injured_games
+        bench_pids, promoted_pids, injured_games, fantrax_adp
     )
 
     return {

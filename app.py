@@ -311,6 +311,8 @@ def _build_rankings_df(
             "GW":        p["games"],
             "26/27 Proj":p["projected_pts"],
             "VORP":      p.get("vorp", 0.0),
+            "ADP":       p.get("adp"),
+            "Edge":      p.get("adp_edge"),
             "Draft Pos":  p.get("adp_rank"),
             "DP Rec":    dp_rec,
             # hidden detail cols
@@ -518,8 +520,8 @@ with tab_ranks:
     with r_col2:
         sort_mode = st.radio(
             "Sort by",
-            ["VORP (draft order)", "26/27 Projected", "25/26 Total Pts",
-             "GW Avg (PPG)", "Per 90 (PP90)"],
+            ["VORP (draft order)", "Edge vs ADP", "26/27 Projected",
+             "25/26 Total Pts", "GW Avg (PPG)", "Per 90 (PP90)"],
             horizontal=True,
             key="ranks_sort",
         )
@@ -530,6 +532,7 @@ with tab_ranks:
 
     sort_col_map = {
         "VORP (draft order)": "VORP",
+        "Edge vs ADP":     "Edge",
         "26/27 Projected": "26/27 Proj",
         "25/26 Total Pts": "25/26 Pts",
         "GW Avg (PPG)":    "PPG",
@@ -540,6 +543,7 @@ with tab_ranks:
     pos_arg   = None if pos_filter == "All" else pos_filter
     available = ds.get_available(pos_arg, sort_by={
         "VORP (draft order)": "vorp",
+        "Edge vs ADP":     "adp_edge",
         "26/27 Projected": "projected_pts",
         "25/26 Total Pts": "total_pts",
         "GW Avg (PPG)":    "ppg",
@@ -551,7 +555,7 @@ with tab_ranks:
     else:
         df = _build_rankings_df(available, sort_col=sort_col)
 
-        show_cols = ["★", "Name", "Pos", "Club", "25/26 Pts", "PPG", "PP90", "GW", "26/27 Proj", "VORP", "Draft Pos", "DP Rec"]
+        show_cols = ["★", "Name", "Pos", "Club", "25/26 Pts", "PPG", "PP90", "GW", "26/27 Proj", "VORP", "ADP", "Edge", "DP Rec"]
 
         if show_detail:
             detail_map = {
@@ -574,7 +578,8 @@ with tab_ranks:
 
         df_show = df[show_cols].copy()
         fmt = {"25/26 Pts": "{:.1f}", "PPG": "{:.2f}", "PP90": "{:.2f}",
-               "26/27 Proj": "{:.1f}", "VORP": "{:+.0f}"}
+               "26/27 Proj": "{:.1f}", "VORP": "{:+.0f}",
+               "ADP": "{:.0f}", "Edge": "{:+.0f}"}
         if show_detail:
             fmt |= {"FPL Own%": "{:.1f}", "Pen": "{:.0f}", "Crn": "{:.0f}", "FK": "{:.0f}"}
             if ds.understat_loaded:
@@ -582,6 +587,7 @@ with tab_ranks:
 
         gradient_col = {
             "VORP (draft order)": "VORP",
+            "Edge vs ADP":     "Edge",
             "26/27 Projected": "26/27 Proj",
             "25/26 Total Pts": "25/26 Pts",
             "GW Avg (PPG)":    "PPG",
@@ -607,6 +613,9 @@ with tab_ranks:
             st.warning("Sleeper season stats not loaded — points and projections show 0.")
 
     st.caption(
+        "**ADP** = expert consensus draft rank from Fantrax Default leagues, whose scoring is "
+        "near-identical to Sleeper's (both descend from Togga)  ·  **Edge** = ADP − our VORP rank; "
+        "positive means the market lets him slide later than our scoring says he's worth  ·  "
         "**VORP** = points above the last startable player at that position (replacement level) — "
         "this is the true draft order, because it prices positional scarcity: GKs cluster tightly "
         "so their VORP is compressed, while a steep MID drop-off is rewarded  ·  "

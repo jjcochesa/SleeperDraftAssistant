@@ -1,0 +1,1052 @@
+{
+ "bruno fernandes": {
+  "name": "Bruno Fernandes",
+  "team": "MUN",
+  "pos": "M",
+  "adp": 1.0,
+  "stdev": 0.31
+ },
+ "erling haaland": {
+  "name": "Erling Haaland",
+  "team": "MCI",
+  "pos": "F",
+  "adp": 2.0,
+  "stdev": 0.23
+ },
+ "bukayo saka": {
+  "name": "Bukayo Saka",
+  "team": "ARS",
+  "pos": "M",
+  "adp": 3.0,
+  "stdev": 0.46
+ },
+ "cole palmer": {
+  "name": "Cole Palmer",
+  "team": "CHE",
+  "pos": "M",
+  "adp": 4.0,
+  "stdev": 0.81
+ },
+ "dominik szoboszlai": {
+  "name": "Dominik Szoboszlai",
+  "team": "LIV",
+  "pos": "M",
+  "adp": 5.0,
+  "stdev": 0.58
+ },
+ "joao pedro": {
+  "name": "Joao Pedro",
+  "team": "CHE",
+  "pos": "F",
+  "adp": 6.0,
+  "stdev": 0.99
+ },
+ "jeremy doku": {
+  "name": "Jeremy Doku",
+  "team": "MCI",
+  "pos": "M",
+  "adp": 7.0,
+  "stdev": 0.55
+ },
+ "antoine semenyo": {
+  "name": "Antoine Semenyo",
+  "team": "MCI",
+  "pos": "F",
+  "adp": 8.0,
+  "stdev": 1.12
+ },
+ "florian wirtz": {
+  "name": "Florian Wirtz",
+  "team": "LIV",
+  "pos": "M",
+  "adp": 9.0,
+  "stdev": 0.69
+ },
+ "morgan gibbs white": {
+  "name": "Morgan Gibbs-White",
+  "team": "NOT",
+  "pos": "M",
+  "adp": 10.0,
+  "stdev": 0.57
+ },
+ "rayan cherki": {
+  "name": "Rayan Cherki",
+  "team": "MCI",
+  "pos": "M",
+  "adp": 11.0,
+  "stdev": 0.48
+ },
+ "alexander isak": {
+  "name": "Alexander Isak",
+  "team": "LIV",
+  "pos": "F",
+  "adp": 12.0,
+  "stdev": 1.01
+ },
+ "declan rice": {
+  "name": "Declan Rice",
+  "team": "ARS",
+  "pos": "M",
+  "adp": 13.0,
+  "stdev": 0.86
+ },
+ "pascal gross": {
+  "name": "Pascal Gross",
+  "team": "BHA",
+  "pos": "M",
+  "adp": 14.0,
+  "stdev": 0.67
+ },
+ "igor thiago": {
+  "name": "Igor Thiago",
+  "team": "BRF",
+  "pos": "F",
+  "adp": 15.0,
+  "stdev": 0.95
+ },
+ "yankuba minteh": {
+  "name": "Yankuba Minteh",
+  "team": "BHA",
+  "pos": "M",
+  "adp": 16.0,
+  "stdev": 0.78
+ },
+ "james tarkowski": {
+  "name": "James Tarkowski",
+  "team": "EVE",
+  "pos": "D",
+  "adp": 17.0,
+  "stdev": 0.95
+ },
+ "anton stach": {
+  "name": "Anton Stach",
+  "team": "LEE",
+  "pos": "M",
+  "adp": 18.0,
+  "stdev": 0.88
+ },
+ "daniel munoz": {
+  "name": "Daniel Munoz",
+  "team": "CRY",
+  "pos": "D",
+  "adp": 19.0,
+  "stdev": 0.95
+ },
+ "gabriel magalhaes": {
+  "name": "Gabriel Magalhaes",
+  "team": "ARS",
+  "pos": "D",
+  "adp": 20.0,
+  "stdev": 0.86
+ },
+ "virgil van dijk": {
+  "name": "Virgil van Dijk",
+  "team": "LIV",
+  "pos": "D",
+  "adp": 21.0,
+  "stdev": 0.36
+ },
+ "matheus cunha": {
+  "name": "Matheus Cunha",
+  "team": "MUN",
+  "pos": "F",
+  "adp": 22.0,
+  "stdev": 0.79
+ },
+ "pedro porro": {
+  "name": "Pedro Porro",
+  "team": "TOT",
+  "pos": "D",
+  "adp": 23.0,
+  "stdev": 0.92
+ },
+ "morgan rogers": {
+  "name": "Morgan Rogers",
+  "team": "CHE",
+  "pos": "M",
+  "adp": 24.0,
+  "stdev": 1.4
+ },
+ "enzo fernandez": {
+  "name": "Enzo Fernandez",
+  "team": "CHE",
+  "pos": "M",
+  "adp": 25.0,
+  "stdev": 0.94
+ },
+ "bryan mbeumo": {
+  "name": "Bryan Mbeumo",
+  "team": "MUN",
+  "pos": "F",
+  "adp": 26.0,
+  "stdev": 1.23
+ },
+ "mohammed kudus": {
+  "name": "Mohammed Kudus",
+  "team": "TOT",
+  "pos": "M",
+  "adp": 27.0,
+  "stdev": 1.33
+ },
+ "dango ouattara": {
+  "name": "Dango Ouattara",
+  "team": "BRF",
+  "pos": "M",
+  "adp": 28.0,
+  "stdev": 1.08
+ },
+ "marc guehi": {
+  "name": "Marc Guehi",
+  "team": "MCI",
+  "pos": "D",
+  "adp": 29.0,
+  "stdev": 1.04
+ },
+ "cody gakpo": {
+  "name": "Cody Gakpo",
+  "team": "LIV",
+  "pos": "F",
+  "adp": 30.0,
+  "stdev": 0.99
+ },
+ "marcus tavernier": {
+  "name": "Marcus Tavernier",
+  "team": "BOU",
+  "pos": "M",
+  "adp": 31.0,
+  "stdev": 1.07
+ },
+ "neco williams": {
+  "name": "Neco Williams",
+  "team": "NOT",
+  "pos": "D",
+  "adp": 32.0,
+  "stdev": 1.31
+ },
+ "james garner": {
+  "name": "James Garner",
+  "team": "EVE",
+  "pos": "M",
+  "adp": 33.0,
+  "stdev": 0.65
+ },
+ "bruno guimaraes": {
+  "name": "Bruno Guimaraes",
+  "team": "NEW",
+  "pos": "M",
+  "adp": 34.0,
+  "stdev": 0.92
+ },
+ "iliman ndiaye": {
+  "name": "Iliman Ndiaye",
+  "team": "EVE",
+  "pos": "M",
+  "adp": 35.0,
+  "stdev": 1.07
+ },
+ "elliot anderson": {
+  "name": "Elliot Anderson",
+  "team": "MCI",
+  "pos": "M",
+  "adp": 36.0,
+  "stdev": 1.09
+ },
+ "phil foden": {
+  "name": "Phil Foden",
+  "team": "MCI",
+  "pos": "M",
+  "adp": 37.0,
+  "stdev": 1.36
+ },
+ "james hill": {
+  "name": "James Hill",
+  "team": "BOU",
+  "pos": "D",
+  "adp": 38.0,
+  "stdev": 1.15
+ },
+ "ollie watkins": {
+  "name": "Ollie Watkins",
+  "team": "AVL",
+  "pos": "F",
+  "adp": 39.0,
+  "stdev": 1.03
+ },
+ "patrick dorgu": {
+  "name": "Patrick Dorgu",
+  "team": "MUN",
+  "pos": "D",
+  "adp": 40.0,
+  "stdev": 1.01
+ },
+ "martin odegaard": {
+  "name": "Martin Odegaard",
+  "team": "ARS",
+  "pos": "M",
+  "adp": 41.0,
+  "stdev": 1.34
+ },
+ "matheus nunes": {
+  "name": "Matheus Nunes",
+  "team": "MCI",
+  "pos": "D",
+  "adp": 42.0,
+  "stdev": 1.59
+ },
+ "enzo le fee": {
+  "name": "Enzo Le Fee",
+  "team": "SUN",
+  "pos": "M",
+  "adp": 43.0,
+  "stdev": 1.51
+ },
+ "adrien truffert": {
+  "name": "Adrien Truffert",
+  "team": "BOU",
+  "pos": "D",
+  "adp": 44.0,
+  "stdev": 1.0
+ },
+ "dominic calvert lewin": {
+  "name": "Dominic Calvert-Lewin",
+  "team": "LEE",
+  "pos": "F",
+  "adp": 45.0,
+  "stdev": 0.73
+ },
+ "rayan": {
+  "name": "Rayan",
+  "team": "BOU",
+  "pos": "F",
+  "adp": 46.0,
+  "stdev": 1.41
+ },
+ "harry wilson": {
+  "name": "Harry Wilson",
+  "team": "LEE",
+  "pos": "M",
+  "adp": 47.0,
+  "stdev": 2.04
+ },
+ "jack grealish": {
+  "name": "Jack Grealish",
+  "team": "MCI",
+  "pos": "M",
+  "adp": 48.0,
+  "stdev": 1.54
+ },
+ "nico o reilly": {
+  "name": "Nico O'Reilly",
+  "team": "MCI",
+  "pos": "D",
+  "adp": 49.0,
+  "stdev": 2.07
+ },
+ "ismaila sarr": {
+  "name": "Ismaila Sarr",
+  "team": "CRY",
+  "pos": "M",
+  "adp": 50.0,
+  "stdev": 1.16
+ },
+ "danny ballard": {
+  "name": "Danny Ballard",
+  "team": "SUN",
+  "pos": "D",
+  "adp": 51.0,
+  "stdev": 1.3
+ },
+ "maxence lacroix": {
+  "name": "Maxence Lacroix",
+  "team": "CHE",
+  "pos": "D",
+  "adp": 52.0,
+  "stdev": 0.82
+ },
+ "jurrien timber": {
+  "name": "Jurrien Timber",
+  "team": "ARS",
+  "pos": "D",
+  "adp": 53.0,
+  "stdev": 1.87
+ },
+ "nordi mukiele": {
+  "name": "Nordi Mukiele",
+  "team": "SUN",
+  "pos": "D",
+  "adp": 54.0,
+  "stdev": 0.92
+ },
+ "amad diallo": {
+  "name": "Amad Diallo",
+  "team": "MUN",
+  "pos": "M",
+  "adp": 55.0,
+  "stdev": 1.36
+ },
+ "reece james": {
+  "name": "Reece James",
+  "team": "CHE",
+  "pos": "D",
+  "adp": 56.0,
+  "stdev": 1.2
+ },
+ "mikkel damsgaard": {
+  "name": "Mikkel Damsgaard",
+  "team": "BRF",
+  "pos": "M",
+  "adp": 57.0,
+  "stdev": 2.36
+ },
+ "dominic solanke": {
+  "name": "Dominic Solanke",
+  "team": "TOT",
+  "pos": "F",
+  "adp": 58.0,
+  "stdev": 1.65
+ },
+ "antonee robinson": {
+  "name": "Antonee Robinson",
+  "team": "FUL",
+  "pos": "D",
+  "adp": 59.0,
+  "stdev": 1.27
+ },
+ "lewis hall": {
+  "name": "Lewis Hall",
+  "team": "NEW",
+  "pos": "D",
+  "adp": 60.0,
+  "stdev": 1.24
+ },
+ "kiernan dewsbury hall": {
+  "name": "Kiernan Dewsbury-Hall",
+  "team": "EVE",
+  "pos": "M",
+  "adp": 61.0,
+  "stdev": 1.36
+ },
+ "viktor gyokeres": {
+  "name": "Viktor Gyokeres",
+  "team": "ARS",
+  "pos": "F",
+  "adp": 62.0,
+  "stdev": 1.85
+ },
+ "riccardo calafiori": {
+  "name": "Riccardo Calafiori",
+  "team": "ARS",
+  "pos": "D",
+  "adp": 63.0,
+  "stdev": 1.19
+ },
+ "malick thiaw": {
+  "name": "Malick Thiaw",
+  "team": "NEW",
+  "pos": "D",
+  "adp": 64.0,
+  "stdev": 1.89
+ },
+ "kai havertz": {
+  "name": "Kai Havertz",
+  "team": "ARS",
+  "pos": "F",
+  "adp": 65.0,
+  "stdev": 1.44
+ },
+ "chris richards": {
+  "name": "Chris Richards",
+  "team": "CRY",
+  "pos": "D",
+  "adp": 66.0,
+  "stdev": 1.36
+ },
+ "jan paul van hecke": {
+  "name": "Jan-Paul van Hecke",
+  "team": "TOT",
+  "pos": "D",
+  "adp": 67.0,
+  "stdev": 1.62
+ },
+ "benjamin sesko": {
+  "name": "Benjamin Sesko",
+  "team": "MUN",
+  "pos": "F",
+  "adp": 68.0,
+  "stdev": 0.96
+ },
+ "kaoru mitoma": {
+  "name": "Kaoru Mitoma",
+  "team": "BHA",
+  "pos": "M",
+  "adp": 69.0,
+  "stdev": 1.55
+ },
+ "milos kerkez": {
+  "name": "Milos Kerkez",
+  "team": "LIV",
+  "pos": "D",
+  "adp": 70.0,
+  "stdev": 1.56
+ },
+ "pedro neto": {
+  "name": "Pedro Neto",
+  "team": "CHE",
+  "pos": "F",
+  "adp": 71.0,
+  "stdev": 1.67
+ },
+ "johan manzambi": {
+  "name": "Johan Manzambi",
+  "team": "AVL",
+  "pos": "M",
+  "adp": 72.0,
+  "stdev": 1.5
+ },
+ "omar alderete": {
+  "name": "Omar Alderete",
+  "team": "SUN",
+  "pos": "D",
+  "adp": 73.0,
+  "stdev": 1.69
+ },
+ "estevao": {
+  "name": "Estevao",
+  "team": "CHE",
+  "pos": "F",
+  "adp": 74.0,
+  "stdev": 1.2
+ },
+ "kevin schade": {
+  "name": "Kevin Schade",
+  "team": "BRF",
+  "pos": "F",
+  "adp": 75.0,
+  "stdev": 1.8
+ },
+ "jean philippe mateta": {
+  "name": "Jean-Philippe Mateta",
+  "team": "CRY",
+  "pos": "F",
+  "adp": 76.0,
+  "stdev": 1.48
+ },
+ "rio ngumoha": {
+  "name": "Rio Ngumoha",
+  "team": "LIV",
+  "pos": "F",
+  "adp": 77.0,
+  "stdev": 1.62
+ },
+ "alex iwobi": {
+  "name": "Alex Iwobi",
+  "team": "FUL",
+  "pos": "M",
+  "adp": 78.0,
+  "stdev": 1.71
+ },
+ "james maddison": {
+  "name": "James Maddison",
+  "team": "TOT",
+  "pos": "M",
+  "adp": 79.0,
+  "stdev": 1.9
+ },
+ "michael kayode": {
+  "name": "Michael Kayode",
+  "team": "BRF",
+  "pos": "D",
+  "adp": 80.0,
+  "stdev": 1.48
+ },
+ "youri tielemans": {
+  "name": "Youri Tielemans",
+  "team": "MUN",
+  "pos": "M",
+  "adp": 81.0,
+  "stdev": 1.39
+ },
+ "christos tzolis": {
+  "name": "Christos Tzolis",
+  "team": "ARS",
+  "pos": "F",
+  "adp": 82.0,
+  "stdev": 0.92
+ },
+ "josko gvardiol": {
+  "name": "Josko Gvardiol",
+  "team": "MCI",
+  "pos": "D",
+  "adp": 83.0,
+  "stdev": 1.35
+ },
+ "luka vuskovic": {
+  "name": "Luka Vuskovic",
+  "team": "BHA",
+  "pos": "D",
+  "adp": 84.0,
+  "stdev": 1.57
+ },
+ "mateus fernandes": {
+  "name": "Mateus Fernandes",
+  "team": "TOT",
+  "pos": "M",
+  "adp": 85.0,
+  "stdev": 1.69
+ },
+ "rayan ait nouri": {
+  "name": "Rayan Ait-Nouri",
+  "team": "MCI",
+  "pos": "D",
+  "adp": 86.0,
+  "stdev": 1.42
+ },
+ "kevin": {
+  "name": "Kevin",
+  "team": "FUL",
+  "pos": "F",
+  "adp": 87.0,
+  "stdev": 1.6
+ },
+ "jaka bijol": {
+  "name": "Jaka Bijol",
+  "team": "LEE",
+  "pos": "D",
+  "adp": 88.0,
+  "stdev": 2.46
+ },
+ "eberechi eze": {
+  "name": "Eberechi Eze",
+  "team": "ARS",
+  "pos": "M",
+  "adp": 89.0,
+  "stdev": 1.56
+ },
+ "pascal struijk": {
+  "name": "Pascal Struijk",
+  "team": "BHA",
+  "pos": "D",
+  "adp": 90.0,
+  "stdev": 2.15
+ },
+ "savio": {
+  "name": "Savio",
+  "team": "MCI",
+  "pos": "M",
+  "adp": 91.0,
+  "stdev": 2.68
+ },
+ "nathan collins": {
+  "name": "Nathan Collins",
+  "team": "BRF",
+  "pos": "D",
+  "adp": 92.0,
+  "stdev": 2.4
+ },
+ "diogo dalot": {
+  "name": "Diogo Dalot",
+  "team": "MUN",
+  "pos": "D",
+  "adp": 93.0,
+  "stdev": 1.38
+ },
+ "diego gomez": {
+  "name": "Diego Gomez",
+  "team": "BHA",
+  "pos": "M",
+  "adp": 94.0,
+  "stdev": 1.47
+ },
+ "alex scott": {
+  "name": "Alex Scott",
+  "team": "BOU",
+  "pos": "M",
+  "adp": 95.0,
+  "stdev": 1.09
+ },
+ "adam wharton": {
+  "name": "Adam Wharton",
+  "team": "CRY",
+  "pos": "M",
+  "adp": 96.0,
+  "stdev": 1.57
+ },
+ "oliver mcburnie": {
+  "name": "Oliver McBurnie",
+  "team": "HUL",
+  "pos": "F",
+  "adp": 97.0,
+  "stdev": 1.43
+ },
+ "harvey barnes": {
+  "name": "Harvey Barnes",
+  "team": "NEW",
+  "pos": "M",
+  "adp": 98.0,
+  "stdev": 1.56
+ },
+ "marcos senesi": {
+  "name": "Marcos Senesi",
+  "team": "TOT",
+  "pos": "D",
+  "adp": 99.0,
+  "stdev": 3.26
+ },
+ "harry maguire": {
+  "name": "Harry Maguire",
+  "team": "MUN",
+  "pos": "D",
+  "adp": 100.0,
+  "stdev": 1.37
+ },
+ "beto": {
+  "name": "Beto",
+  "team": "EVE",
+  "pos": "F",
+  "adp": 101.0,
+  "stdev": 0.69
+ },
+ "jaidon anthony": {
+  "name": "Jaidon Anthony",
+  "team": "BRF",
+  "pos": "M",
+  "adp": 102.0,
+  "stdev": 2.4
+ },
+ "john mcginn": {
+  "name": "John McGinn",
+  "team": "AVL",
+  "pos": "M",
+  "adp": 103.0,
+  "stdev": 1.58
+ },
+ "maxim de cuyper": {
+  "name": "Maxim De Cuyper",
+  "team": "BHA",
+  "pos": "D",
+  "adp": 104.0,
+  "stdev": 1.89
+ },
+ "ethan ampadu": {
+  "name": "Ethan Ampadu",
+  "team": "LEE",
+  "pos": "M",
+  "adp": 105.0,
+  "stdev": 3.21
+ },
+ "mats wieffer": {
+  "name": "Mats Wieffer",
+  "team": "BHA",
+  "pos": "D",
+  "adp": 106.0,
+  "stdev": 2.38
+ },
+ "mathys tel": {
+  "name": "Mathys Tel",
+  "team": "TOT",
+  "pos": "F",
+  "adp": 107.0,
+  "stdev": 1.43
+ },
+ "jeremie frimpong": {
+  "name": "Jeremie Frimpong",
+  "team": "LIV",
+  "pos": "D",
+  "adp": 108.0,
+  "stdev": 1.32
+ },
+ "marco palestra": {
+  "name": "Marco Palestra",
+  "team": "CHE",
+  "pos": "D",
+  "adp": 109.0,
+  "stdev": 1.79
+ },
+ "hayden hackney": {
+  "name": "Hayden Hackney",
+  "team": "EVE",
+  "pos": "M",
+  "adp": 110.0,
+  "stdev": 1.93
+ },
+ "sven botman": {
+  "name": "Sven Botman",
+  "team": "NEW",
+  "pos": "D",
+  "adp": 111.0,
+  "stdev": 1.53
+ },
+ "noah okafor": {
+  "name": "Noah Okafor",
+  "team": "LEE",
+  "pos": "F",
+  "adp": 112.0,
+  "stdev": 1.88
+ },
+ "ferdi kadioglu": {
+  "name": "Ferdi Kadioglu",
+  "team": "BHA",
+  "pos": "D",
+  "adp": 113.0,
+  "stdev": 2.58
+ },
+ "tyrick mitchell": {
+  "name": "Tyrick Mitchell",
+  "team": "CRY",
+  "pos": "D",
+  "adp": 114.0,
+  "stdev": 1.86
+ },
+ "jake o brien": {
+  "name": "Jake O'Brien",
+  "team": "EVE",
+  "pos": "D",
+  "adp": 115.0,
+  "stdev": 2.26
+ },
+ "callum hudson odoi": {
+  "name": "Callum Hudson-Odoi",
+  "team": "NOT",
+  "pos": "F",
+  "adp": 116.0,
+  "stdev": 2.24
+ },
+ "abdul fatawu": {
+  "name": "Abdul Fatawu",
+  "team": "IPS",
+  "pos": "F",
+  "adp": 117.0,
+  "stdev": 2.13
+ },
+ "james justin": {
+  "name": "James Justin",
+  "team": "LEE",
+  "pos": "D",
+  "adp": 118.0,
+  "stdev": 2.34
+ },
+ "granit xhaka": {
+  "name": "Granit Xhaka",
+  "team": "SUN",
+  "pos": "M",
+  "adp": 119.0,
+  "stdev": 1.36
+ },
+ "evanilson": {
+  "name": "Evanilson",
+  "team": "BOU",
+  "pos": "F",
+  "adp": 120.0,
+  "stdev": 2.34
+ },
+ "noni madueke": {
+  "name": "Noni Madueke",
+  "team": "ARS",
+  "pos": "M",
+  "adp": 121.0,
+  "stdev": 2.15
+ },
+ "ryan gravenberch": {
+  "name": "Ryan Gravenberch",
+  "team": "LIV",
+  "pos": "M",
+  "adp": 122.0,
+  "stdev": 3.03
+ },
+ "dan burn": {
+  "name": "Dan Burn",
+  "team": "NEW",
+  "pos": "D",
+  "adp": 123.0,
+  "stdev": 1.34
+ },
+ "william osula": {
+  "name": "William Osula",
+  "team": "NEW",
+  "pos": "F",
+  "adp": 124.0,
+  "stdev": 2.1
+ },
+ "omari hutchinson": {
+  "name": "Omari Hutchinson",
+  "team": "NOT",
+  "pos": "F",
+  "adp": 125.0,
+  "stdev": 1.83
+ },
+ "oscar bobb": {
+  "name": "Oscar Bobb",
+  "team": "FUL",
+  "pos": "M",
+  "adp": 126.0,
+  "stdev": 1.74
+ },
+ "victor munoz": {
+  "name": "Victor Munoz",
+  "team": "LIV",
+  "pos": "F",
+  "adp": 127.0,
+  "stdev": 2.34
+ },
+ "charalampos kostoulas": {
+  "name": "Charalampos Kostoulas",
+  "team": "BHA",
+  "pos": "F",
+  "adp": 128.0,
+  "stdev": 1.47
+ },
+ "ola aina": {
+  "name": "Ola Aina",
+  "team": "NOT",
+  "pos": "D",
+  "adp": 129.0,
+  "stdev": 1.82
+ },
+ "bazoumana toure": {
+  "name": "Bazoumana Toure",
+  "team": "NEW",
+  "pos": "F",
+  "adp": 130.0,
+  "stdev": 1.92
+ },
+ "yeremy pino": {
+  "name": "Yeremy Pino",
+  "team": "CRY",
+  "pos": "M",
+  "adp": 131.0,
+  "stdev": 2.38
+ },
+ "igor jesus": {
+  "name": "Igor Jesus",
+  "team": "NOT",
+  "pos": "F",
+  "adp": 132.0,
+  "stdev": 2.51
+ },
+ "lewis miley": {
+  "name": "Lewis Miley",
+  "team": "NEW",
+  "pos": "M",
+  "adp": 133.0,
+  "stdev": 1.94
+ },
+ "jarrad branthwaite": {
+  "name": "Jarrad Branthwaite",
+  "team": "EVE",
+  "pos": "D",
+  "adp": 134.0,
+  "stdev": 1.68
+ },
+ "matty cash": {
+  "name": "Matty Cash",
+  "team": "AVL",
+  "pos": "D",
+  "adp": 135.0,
+  "stdev": 2.24
+ },
+ "nick woltemade": {
+  "name": "Nick Woltemade",
+  "team": "NEW",
+  "pos": "F",
+  "adp": 136.0,
+  "stdev": 2.11
+ },
+ "jaydee canvot": {
+  "name": "Jaydee Canvot",
+  "team": "CRY",
+  "pos": "D",
+  "adp": 137.0,
+  "stdev": 2.1
+ },
+ "omar marmoush": {
+  "name": "Omar Marmoush",
+  "team": "MCI",
+  "pos": "F",
+  "adp": 138.0,
+  "stdev": 2.23
+ },
+ "tarik muharemovic": {
+  "name": "Tarik Muharemovic",
+  "team": "LEE",
+  "pos": "D",
+  "adp": 139.0,
+  "stdev": 2.21
+ },
+ "hugo ekitike": {
+  "name": "Hugo Ekitike",
+  "team": "LIV",
+  "pos": "F",
+  "adp": 140.0,
+  "stdev": 1.97
+ },
+ "levi colwill": {
+  "name": "Levi Colwill",
+  "team": "CHE",
+  "pos": "D",
+  "adp": 141.0,
+  "stdev": 2.07
+ },
+ "sandro tonali": {
+  "name": "Sandro Tonali",
+  "team": "TOT",
+  "pos": "M",
+  "adp": 142.0,
+  "stdev": 1.85
+ },
+ "trai hume": {
+  "name": "Trai Hume",
+  "team": "SUN",
+  "pos": "D",
+  "adp": 143.0,
+  "stdev": 1.75
+ },
+ "dejan kulusevski": {
+  "name": "Dejan Kulusevski",
+  "team": "TOT",
+  "pos": "M",
+  "adp": 144.0,
+  "stdev": 2.08
+ },
+ "yoane wissa": {
+  "name": "Yoane Wissa",
+  "team": "NEW",
+  "pos": "F",
+  "adp": 145.0,
+  "stdev": 1.74
+ },
+ "justin kluivert": {
+  "name": "Justin Kluivert",
+  "team": "BOU",
+  "pos": "M",
+  "adp": 146.0,
+  "stdev": 2.41
+ },
+ "nikola milenkovic": {
+  "name": "Nikola Milenkovic",
+  "team": "NOT",
+  "pos": "D",
+  "adp": 147.0,
+  "stdev": 2.41
+ },
+ "antonio silva": {
+  "name": "Antonio Silva",
+  "team": "BOU",
+  "pos": "D",
+  "adp": 148.0,
+  "stdev": 2.3
+ },
+ "gonzalo garcia": {
+  "name": "Gonzalo Garcia",
+  "team": "FUL",
+  "pos": "F",
+  "adp": 149.0,
+  "stdev": 1.53
+ },
+ "jack hinshelwood": {
+  "name": "Jack Hinshelwood",
+  "team": "BHA",
+  "pos": "M",
+  "adp": 150.0,
+  "stdev": 2.19
+ }
+}

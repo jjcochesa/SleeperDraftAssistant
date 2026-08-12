@@ -109,10 +109,11 @@ print("=" * 68)
 # wrong man — this is how "Gabriel" landed on a 0-minute Joseph Gabriel instead
 # of Gabriel Magalhaes, silently unstarring a top-20 asset.
 pool_ = de._build_pool(players)
+lineups_ = load_lineups()
 def _mins(pid):
     return float((stats.get(pid) or {}).get("min") or 0)
 flagged = 0
-for club, names in lineups.items():
+for club, names in lineups_.items():
     if club.startswith("_"):
         continue
     for n in names:

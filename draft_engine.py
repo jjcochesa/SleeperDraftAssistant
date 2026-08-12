@@ -800,6 +800,14 @@ def build_player_stats(
                 pp90 = round((NS_EVIDENCE * raw_pp90 + k_ns * prior_pp90)
                              / (NS_EVIDENCE + k_ns), 2)
                 projected_pts = round(pp90 * NEWSIGNING_N90, 1)
+            elif nailed:
+                # Nailed starter with NO data at all — neither PL minutes nor a
+                # harvested prior league. With zero evidence the honest estimate
+                # is the prior itself: an unknown player expected to start, i.e.
+                # a league-average starter at his position. Better than 0 (which
+                # hides a genuine starter) and better than inventing a rate.
+                pp90 = round(pos_avg.get(pos, 8.0), 2)
+                projected_pts = round(pp90 * NEWSIGNING_N90, 1)
             else:
                 projected_pts = 0.0
 

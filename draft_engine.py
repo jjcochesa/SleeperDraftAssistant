@@ -826,10 +826,19 @@ def build_player_stats(
         pp90 = round(total_pts / n90, 2) if qualifies else 0.0
         if qualifies:
             prior_pp90 = pos_avg.get(pos, 8.0)
-            # Adaptive K on 90s played: full-season veterans keep ~83% of their
+            # Evidence weight. Raw 90s overstates how much we know about a
+            # substitute: a rate built from 30-minute cameos in stretched games
+            # does NOT carry over to starting. Osula's 12.65 pp90 — the highest
+            # of any forward — came at 34 min/appearance, and projecting it over
+            # 30 full 90s made him a top-20 pick against a consensus rank of 124.
+            # Discount the sample by how starter-like the minutes were, so cameo
+            # rates regress hard while ever-presents are untouched.
+            mpa_raw = (mins / games) if games > 0 else 0.0
+            evidence = max(0.5, n90 * min(1.0, mpa_raw / 90.0) if mpa_raw else n90)
+            # Adaptive K on evidence: full-season veterans keep ~83% of their
             # own rate; 10-90 fringe players get ~44%. Prevents over-shrinking.
-            k            = max(3.0, 40.0 / (n90 ** 0.5))
-            blended_pp90 = (n90 * pp90 + k * prior_pp90) / (n90 + k)
+            k            = max(3.0, 40.0 / (evidence ** 0.5))
+            blended_pp90 = (evidence * pp90 + k * prior_pp90) / (evidence + k)
             # Expected 90s next season = expected appearances × the player's own
             # minutes-per-appearance. Being "nailed" lifts APPEARANCES (a squad
             # player now expected to feature every week) but NOT minutes-per-game

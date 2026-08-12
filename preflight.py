@@ -18,6 +18,7 @@ from pathlib import Path
 
 import requests
 
+import draft_engine as de
 from draft_engine import (
     _match_name_list, _norm_name, load_bench, load_lineups, load_promoted,
     build_fpl_lookup,
@@ -98,6 +99,40 @@ for label, loader in [("nailed", load_lineups), ("bench", load_bench),
         print(f"   UNRESOLVED: {', '.join(bad)}")
     else:
         print("   all good")
+
+print()
+print("=" * 68)
+print("3b. AMBIGUOUS SINGLE-NAME ENTRIES")
+print("=" * 68)
+# A one-word entry resolves by surname first. If some OTHER player matches the
+# same token and has far more minutes, the entry is probably pointing at the
+# wrong man — this is how "Gabriel" landed on a 0-minute Joseph Gabriel instead
+# of Gabriel Magalhaes, silently unstarring a top-20 asset.
+pool_ = de._build_pool(players)
+def _mins(pid):
+    return float((stats.get(pid) or {}).get("min") or 0)
+flagged = 0
+for club, names in lineups.items():
+    if club.startswith("_"):
+        continue
+    for n in names:
+        if len(_norm_name(n).split()) != 1:
+            continue
+        pid = de._resolve_one(n, pool_, _mins)
+        if not pid:
+            continue
+        tok = _norm_name(n)
+        alts = [(p, _mins(p)) for p, toks, _l in pool_
+                if tok in toks and p != pid and _mins(p) > _mins(pid) + 500]
+        if alts:
+            best = max(alts, key=lambda x: x[1])
+            print(f"   {n} ({club}) -> {players[pid].get('full_name')} "
+                  f"[{_mins(pid):.0f} min]")
+            print(f"        but {players[best[0]].get('full_name')} "
+                  f"[{best[1]:.0f} min] also matches — spell the name out if wrong")
+            flagged += 1
+if not flagged:
+    print("   none — every single-name entry resolves to the highest-minute match")
 
 print()
 print("=" * 68)
